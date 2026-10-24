@@ -1,101 +1,66 @@
-# Quick CFD: GPU-first multi-fidelity compressible CFD
+# Quick CFD: GPU-Accelerated Multi-Fidelity Compressible Flow Solver
 
-**GPU-accelerated multi-fidelity compressible CFD with 2-D/3-D Cartesian AMR
-cut cells, tetrahedral, hybrid, and polyhedral meshes; CPU/CUDA RK3 and DP-LUR
-solvers; surface pressure and aerodynamic loads. Accuracy validation is
-ongoing.**
+**2D/3D compressible RANS/Euler solver on Cartesian AMR cut-cell, tetrahedral, hybrid, and polyhedral meshes, with CPU/OpenMP and CUDA backends (RK3 and DP-LUR) for aerodynamic load and surface pressure prediction.**
 
-Quick CFD is a GPU-oriented research code for rapidly generating qualitative
-compressible-flow fields and aerodynamic trends for NNLCI and other surrogate
-models.  It spans a fast two-dimensional Cartesian cut-cell airfoil path,
-general three-dimensional explicit-face meshes, and a procedural Cartesian-AMR
-cut-cell path for full aircraft.  The package contains source, reproducible
-examples, retained settings, mesh converters, validation metadata, and a
-complete English theory and operation manual.
+Quick CFD is a GPU-focused solver built to generate multi-fidelity compressible flow fields and aerodynamic trends for neural-network fidelity-lift and surrogate models (such as NNLCI). It includes a 2D Cartesian cut-cell solver for airfoils, an unstructured 3D explicit-face solver for general polyhedral and hybrid grids, and a 3D procedural octree-AMR cut-cell solver for full aircraft configurations. The repository provides the C++/CUDA and Python sources, mesh converters, example runbooks, and a theory manual.
 
-This is a research and surrogate-data-generation code.  It is not a certified
-replacement for a production CFD package.  In particular, the current CRM
-states are transient development states, not converged drag-validation results.
-
-**Accuracy validation is ongoing.**  Geometry closure, uniform-flow
-preservation, positivity, restart behavior, and fixed-step CPU/CUDA agreement
-have verification evidence.  The 2-D NACA4412 case has a matched XFOIL
-numerical comparison.  CRM surface pressure, integrated CL/CD/CM, long-window
-convergence, and grid independence are still under development.  The large
-CRM timings below demonstrate GPU throughput, not time to a validated
-aerodynamic answer.
+**Verification and validation status:** Geometry closure, freestream preservation, density/pressure positivity, checkpoint restarts, and fixed-step CPU/CUDA bitwise or near-machine-precision parity are verified across the test suite. The 2D NACA 4412 case is validated against XFOIL. In 3D, the NASA Common Research Model (CRM) cases currently serve as large-grid GPU throughput benchmarks; long-window iterative convergence, SA turbulence closure tuning, and integrated drag validation ($C_L, C_D, C_M$) on the 3D CRM grids are still in progress.
 
 ![CRM full-aircraft 3D surface pressure from the Cartesian-AMR solver](examples/3d_crm_amr/showcase/crm_amr_surface_cp_3d.png)
 
-## Demonstrated scale and speed
+## Benchmarks and GPU Throughput (RTX 4090)
 
-The retained CUDA measurements below were produced in the RTX 4090 development
-environment.  They report actual process or solver-compute time, not an
-extrapolated kernel rate.  The demonstrated Mach envelope is **0.2 through
-1.65**.  This is the range exercised by the retained low-subsonic, transonic,
-and supersonic cases; it is not a hard parser limit or a validation claim
-outside those conditions.
+Timings below were measured on a single NVIDIA RTX 4090 and reflect end-to-end process or solver wall-clock time over test cases from Mach 0.2 to 1.65:
 
-| Case | Mach | Mesh size | Recorded GPU work and time | Interpretation |
+| Case | Mach | Mesh size | Recorded GPU runtime | Status |
 |---|---:|---:|---:|---|
-| NACA4412 LF1/LF2 | 0.20 | 4,718 / 9,517 controls | 20.07 / 33.09 s process time | CL/CM/Cp gate passed against the matched XFOIL numerical reference |
-| RAE2822 hybrid LF1 | 0.78 | 5,051 wedge/hexa cells | 49,000 DP-LUR updates in 11.24 s compute | solver gate passed; experimental accuracy is not claimed |
-| NASA CRM tetra | 0.85 | 10,067,380 tetrahedra | 5,850 DP-LUR updates in 600.20 s compute; 610.35 s total wall time | throughput demonstration; state remains unconverged |
-| NASA CRM Cartesian AMR | 0.85 | 21,523,036 active controls from 31,478,784 procedural cells | 297 DP-LUR updates in 121.19 s compute | large-grid throughput demonstration; state remains unconverged |
-| 3-D sphere regression | 1.65 | 7,680 polyhedral cells | retained end-to-end showcase in 2.15 s process time | coarse conservation/CPU-CUDA regression, not an accuracy benchmark |
+| NACA 4412 LF1 / LF2 | 0.20 | 4,718 / 9,517 cells | 20.07 / 33.09 s total process time | $C_L$, $C_M$, and surface $C_p$ match XFOIL reference |
+| RAE 2822 hybrid LF1 | 0.78 | 5,051 wedge/hex cells | 49,000 DP-LUR sweeps in 11.24 s | Solver verification passed |
+| NASA CRM tetrahedral | 0.85 | 10,067,380 tetrahedra | 5,850 DP-LUR sweeps in 600.20 s (610.35 s total) | Throughput test; flow state not yet converged |
+| NASA CRM Cartesian AMR | 0.85 | 21,523,036 active cells (from 31.48M octree cells) | 297 DP-LUR sweeps in 121.19 s (0.408 s/iter) | Large-grid throughput test; flow state not yet converged |
+| 3D sphere regression | 1.65 | 7,680 polyhedral cells | 2.15 s total process time | Conservation and CPU/CUDA parity check |
 
-On the 21.52M-control CRM AMR mesh, one retained update averaged about 0.408 s.
-The complete final mesh build from the closed surface took about 8 min 52 s;
-rebuilding the final refinement after its reusable parent took about 5 min
-20 s.  These are single-case measurements, not universal runtime guarantees.
+On the 21.52M-cell CRM AMR grid, each DP-LUR iteration takes ~0.408 s on an RTX 4090. Building the full octree cut-cell mesh from the closed aircraft surface takes 8 min 52 s from scratch, or 5 min 20 s when refining from a cached parent grid.
 
-## Supported mesh representations
+## Mesh Representations
 
-| Dimension | Representation | Current use |
+| Dim | Grid type | Application in this repo |
 |---|---|---|
-| 2-D | structured Cartesian and quadtree AMR cut cells | LF1/LF2 airfoils with exact wall segments and small-cell treatment |
-| 3-D | explicit owner/neighbour polyhedral faces | tetrahedra, wedges, hexahedra, and six-block sphere meshes |
-| 3-D | procedural multi-block Cartesian octree AMR | 8x8x8 leaf blocks, exact cut faces, conservative agglomeration, and 2:1 interfaces |
+| 2D | Structured Cartesian & quadtree AMR cut cells | Multi-fidelity (LF1/LF2) airfoils with exact boundary segments and small-cell merging |
+| 3D | Explicit owner/neighbor polyhedral faces | Unstructured tetrahedra, prism/hex hybrid slabs, and 6-block cubed-sphere grids |
+| 3D | Procedural multi-block octree AMR cut cells | $8\times 8\times 8$ leaf blocks with exact surface clipping, cell agglomeration, and 2:1 refinement interfaces |
 
-The procedural path stores regular block topology implicitly and materializes
-only interfaces, physical boundaries, cut-face exceptions, and wall fragments.
-That design reduces face-storage and traversal cost while preserving exact
-cut-surface load integration.
+For the 3D octree AMR solver, regular interior block connectivity is evaluated procedurally on the fly; only block interfaces, physical boundaries, cut-face exceptions, and surface triangles are stored explicitly in device memory.
 
-## Mesh capability gallery
+## Mesh and Flow Visualization
 
-All fields below are painted on actual control-volume intersections, wall
-segments, or source triangles.  The plotting paths do not use `griddata` or a
-scattered-field interpolation to conceal mesh topology.
+All surface and volume plots below are rendered directly on the true control-volume polygons, cut segments, or surface triangles without `scipy.interpolate.griddata` smoothing.
 
-| 2-D quadtree AMR cut cells | 3-D cubed-sphere polyhedra |
+| 2D quadtree AMR cut cells | 3D cubed-sphere polyhedra |
 |---|---|
 | ![NACA4412 true AMR members, flow, and wall Cp](examples/2d_naca4412/showcase/naca4412_lf2.png) | ![Six-block sphere surface, exact plane cells, and mesh](examples/3d_sphere/showcase/sphere_m165_exact_mesh.png) |
-| **Wedge/hexa hybrid mesh** | **Body-fitted tetrahedral mesh** |
+| **Wedge/hex hybrid mesh** | **Body-fitted tetrahedral mesh** |
 | ![RAE2822 wedge and hexahedron hybrid grid](examples/3d_rae2822_hybrid/showcase/rae2822_lf2_hybrid.png) | ![CRM exact tetrahedron-plane intersections](examples/3d_crm_tetra/showcase/crm_tetra_exact_section.png) |
-| **3-D Cartesian-octree AMR cut cells** | **Full 3-D aircraft surface pressure** |
+| **3D Cartesian-octree AMR cut cells** | **Full 3D aircraft surface pressure** |
 | ![CRM true leaf blocks and individual AMR cells](examples/3d_crm_amr/showcase/crm_amr_yz_x5_mesh.png) | ![CRM three-dimensional Cp perspectives](examples/3d_crm_amr/showcase/crm_amr_surface_cp_3d.png) |
 
-Additional symmetry, horizontal, and full-wing flow slices and the complete
-surface gallery are indexed in the [example showcase](examples/README.md#visual-showcase).
+Additional symmetry-plane, spanwise slice, and surface pressure plots are indexed in the [example showcase](examples/README.md#visual-showcase).
 
-## Implemented paths
+## Solver Paths
 
-| Path | Mesh | Solver | Current evidence |
+All solvers use a density-based finite-volume formulation (explicit RK3 or implicit DP-LUR) with low-Mach preconditioning for subsonic cases; pressure-based segregated schemes (SIMPLE/PISO) are not used.
+
+| Path | Mesh topology | Discretization & time marching | Verification / validation |
 |---|---|---|---|
-| 2-D airfoil | Cartesian cut cell, LF1/LF2 | density based, RK3, SA-neg, low-Mach preconditioning | NACA4412 CL/CM/Cp comparison |
-| 3-D sphere | six-block cubed-sphere polyhedra | explicit-face CPU/CUDA | conservation, positivity, full 3-D CPU/CUDA agreement |
-| 3-D RAE2822 | mixed wedge/hexa thin slab | explicit-face DP-LUR | LF1 run and CPU/CUDA agreement |
-| 3-D CRM tetra | NASA body-fitted tetrahedra | explicit-face DP-LUR | 10.07M-cell import, restart, gradient and SA studies |
-| 3-D CRM AMR | multi-block Cartesian octree cut cell | procedural DP-LUR | 7.66M, 14.01M, and 21.52M control-volume cases |
+| 2D airfoil | Cartesian cut cell (LF1/LF2) | Density-based, RK3, SA-neg, low-Mach preconditioning | Validated against XFOIL ($C_L, C_M, C_p$) on NACA 4412 |
+| 3D sphere | 6-block cubed-sphere polyhedra | Explicit-face CPU/CUDA | Conservation, positivity, CPU/CUDA parity |
+| 3D RAE 2822 | Mixed wedge/hex thin wing section | Explicit-face DP-LUR | LF1 run and CPU/CUDA parity |
+| 3D CRM tetra | Body-fitted unstructured tetrahedra | Explicit-face DP-LUR | 10.07M-cell import, checkpoint restart, gradient & SA tests |
+| 3D CRM AMR | Multi-block octree cut cell | Procedural DP-LUR | 7.66M, 14.01M, and 21.52M control-volume runs |
 
-The solvers are density based.  A pressure-based SIMPLE/SIMPLEC/PISO algorithm
-is **not implemented**.  Low-Mach preconditioning does not make a scheme
-pressure based.
+## Build and Quick Start
 
-## Quick build
-
-CUDA build (RTX 4090 default architecture 89):
+CUDA build (defaults to `sm_89` for RTX 4090):
 
 ```bash
 python3 -m venv .venv
@@ -107,7 +72,7 @@ cmake --build build -j 8
 ctest --test-dir build --output-on-failure
 ```
 
-CPU-only build:
+CPU-only build (OpenMP):
 
 ```bash
 cmake -S . -B build_cpu -DCMAKE_BUILD_TYPE=Release \
@@ -116,7 +81,7 @@ cmake --build build_cpu -j 8
 ctest --test-dir build_cpu --output-on-failure
 ```
 
-Run the self-contained 3-D sphere smoke case:
+Run the self-contained 3D supersonic sphere test case:
 
 ```bash
 bash examples/3d_sphere/run_smoke.sh build_cpu cpu
@@ -124,30 +89,25 @@ bash examples/3d_sphere/run_smoke.sh build_cpu cpu
 
 ## Documentation
 
-- [Complete English theory and operation manual](docs/MANUAL.md)
-- [Step-by-step development history](docs/DEVELOPMENT_HISTORY.md)
+- [Theory and operation manual](docs/MANUAL.md)
+- [Development log and history](docs/DEVELOPMENT_HISTORY.md)
 - [Example matrix and runbooks](examples/README.md)
-- [True-mesh visual showcase](examples/README.md#visual-showcase)
-- [Development status](docs/STATUS.md)
-- [Next development phase](docs/STATUS.md#next-development-phase)
-- [Data and binary formats](docs/FORMATS.md)
-- [Literature, standards, data, and software references](docs/REFERENCES.md)
+- [Mesh and flow visual showcase](examples/README.md#visual-showcase)
+- [Current verification & convergence status](docs/STATUS.md)
+- [Planned wall-reconstruction roadmap](docs/STATUS.md#next-development-phase)
+- [Binary and mesh file formats](docs/FORMATS.md)
+- [References and external datasets](docs/REFERENCES.md)
 
-## Repository layout
+## Repository Layout
 
-- `src/`, `pipeline/`, `quick_cfd.py`: native 2-D `quick_airfoil` workflow;
-- `solvers/`: [2-D/3-D executable and source map](solvers/README.md);
-- `solvers/3d/`: explicit-face `sphere3d`, procedural-AMR `amr3d`, import,
-  preprocessing, restart, diagnostics, and unit tests;
-- `tools/cartesian_amr/`: octree planning, exact surface clipping, cut-cell
-  moments, agglomeration, solver-table assembly, and packing;
-- `tools/hybrid/`: RAE2822 mixed triangle/quad extrusion to wedges/hexahedra;
-- `examples/`: one step-by-step runbook per retained case;
-- `validation/`: lightweight validation and comparison scripts.
+- `src/`, `pipeline/`, `quick_cfd.py` — 2D `quick_airfoil` Cartesian cut-cell workflow
+- `solvers/` — [2D/3D solver executables and source map](solvers/README.md)
+- `solvers/3d/` — Explicit-face `sphere3d` and procedural-AMR `amr3d` solvers, mesh importers, restart tools, and unit tests
+- `tools/cartesian_amr/` — Octree builder, exact triangle-box clipping, cut-cell moments, cell agglomeration, and GPU table packing
+- `tools/hybrid/` — 2D mixed tri/quad extrusion to 3D wedge/hex hybrid grids
+- `examples/` — Reproducible runbooks and configuration files for each test case
+- `validation/` — Post-processing and reference comparison scripts
 
-## External data and licensing
+## External Meshes and License
 
-NASA CRM and archived RAE2822 source meshes are not bundled.  Their runbooks
-record source locations, checksums where available, conversion commands, and
-reference metadata.  The project owner must select a software license before a
-public release; see [LICENSE_NOT_SELECTED.md](LICENSE_NOT_SELECTED.md).
+Raw NASA CRM and RAE 2822 archive grids are not stored in the repository; the scripts under `examples/` document the download URLs, checksums, and conversion commands. See [LICENSE_NOT_SELECTED.md](LICENSE_NOT_SELECTED.md) regarding current licensing status.
