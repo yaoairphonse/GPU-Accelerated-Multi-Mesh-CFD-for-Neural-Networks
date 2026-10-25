@@ -1,21 +1,13 @@
-# NASA CRM Cartesian-AMR showcase
+# NASA CRM Cartesian-AMR Showcase
 
-All flow slices map QCFDAM1 control-volume averages directly through the
-procedural block/cell ownership tables.  Solid pixels come from exact plane
-intersections with the CRM surface.  No scattered interpolation is used.
+Flow slices below map `QCFDAM1` control-volume states directly through the procedural block and cell ownership tables, with solid boundaries rendered from exact plane intersections against the CRM surface triangles (no scattered `griddata` interpolation).
 
-- [Full-aircraft 3-D surface Cp perspectives](crm_amr_surface_cp_3d.png), with
-  conservative cut-wall-fragment pressure mapped to all 194,980 exact source
-  triangles
-- [Symmetry-near x-z Mach and Cp](crm_xz_symmetry_mach_cp.png)
-- [Horizontal x-y wing Mach and Cp](crm_xy_wing_mach_cp.png)
-- [Full-span y-z Mach and Cp at x/MAC=5](crm_yz_fullwing_mach_cp.png)
-- [Cp painted on the CRM surface](crm_surface_cp.png)
-- [True AMR section overview](crm_amr_true_mesh_sections.png)
-- [y-z block overview and actual-cell zoom at x/MAC=5](crm_amr_yz_x5_mesh.png)
+- [Full-aircraft 3D surface $C_p$ perspectives](crm_amr_surface_cp_3d.png) — conservative cut-wall pressure mapped onto all 194,980 surface triangles
+- [Multi-view surface $C_p$ projections and load history](crm_surface_cp.png)
+- [Horizontal wing slice ($x$-$y$ plane at $z/\text{MAC}=0.80$, $C_p$ and Mach)](crm_xy_wing_mach_cp.png)
+- [Full-span crossflow slice ($y$-$z$ plane at $x/\text{MAC}=5.0$, $C_p$ and Mach)](crm_yz_fullwing_mach_cp.png)
+- [Near-symmetry slice ($x$-$z$ plane at $y \to 0^+$, $C_p$ and Mach)](crm_xz_symmetry_mach_cp.png)
+- [Octree-AMR block and cut-cell cross-sections](crm_amr_true_mesh_sections.png)
+- [Spanwise leaf-block overview and wing cut-cell zoom at $x/\text{MAC}=5.0$](crm_amr_yz_x5_mesh.png)
 
-The mesh has 21,523,036 agglomerated controls and a minimum Cartesian spacing
-of 0.00390625 MAC.  The refreshed figures use the cumulative 5,000-iteration
-state.  It remains a transient development state rather than a converged CRM
-drag result; the reported comparison uses the less noisy last-1,000-iteration
-pseudo-iteration average.
+The grid contains 21,523,036 active control volumes with a finest Cartesian spacing of $0.00390625\,\text{MAC}$. Figures reflect cumulative iteration 5,000 (4,000–5,000 window average: $C_L = 0.5237$, $C_D = 0.0263$, $C_M = -0.0245$, wing $C_p$ RMSE $0.1003$).

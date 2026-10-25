@@ -156,21 +156,8 @@ aerodynamic convergence.  Require:
 - pressure/viscous force split stable;
 - Cp sections and integrated loads stable across at least two mesh levels.
 
-After 5,000 cumulative updates, the exact cumulative-iteration 4,000--5,000
-trapezoidal average is CL/CD/CM =
-0.523661/0.026297/-0.024508 versus NASA
-0.54239/0.02995/-0.06249.  The last-500 average is
-0.514545/0.025687/-0.012119, so the average itself is not converged.  The saved
-endpoint is 0.511187/0.026104/-0.017449.  Global mean/SA residual maxima are
-6.99e-5/3.28e-4, near-field mean/SA are 0.00216/0.01149, and saved-state wing
-Cp RMSE is 0.10034.  These are pseudo-iteration diagnostics, not a physical-
-time average or a validation result.
+After 5,000 cumulative outer iterations, the 4,000–5,000 window average reaches $C_L / C_D / C_M = 0.523661 / 0.026297 / -0.024508$ against NASA USM3D reference values of $0.54239 / 0.02995 / -0.06249$ (4,500–5,000 window: $0.514545 / 0.025687 / -0.012119$; iteration-5,000 state: $0.511187 / 0.026104 / -0.017449$). Global mean/SA residual maxima drop to $6.99\times 10^{-5} / 3.28\times 10^{-4}$ (near-field $0.00216 / 0.01149$), with wing surface $C_p$ RMSE at $0.10034$. Because these are local pseudo-time iterations and pitching moment still oscillates over the final window, the checkpoint is treated as an active development state rather than a steady converged solution.
 
-## 9. Next grid
+## 9. Next grid refinement
 
-Do not uniformly refine the far field.  First track upper-wing shock position,
-sectional moment, and residual/load budgets by face family.  Use matched CFL
-and damping branches to determine whether the low-frequency mode is numerical
-steady pseudo-time behavior.  Then use Cp/residual maps to target the shock,
-leading/trailing edges, wing-body junction, wing tip, and near wake.  Reduce
-per-control GPU memory before a 30--40M run.
+Avoid uniform far-field refinement. Future 30–40M cell grids should reduce per-cell GPU memory and concentrate refinement along the upper-wing shock, leading/trailing edges, wing-body junction, wing tip, and near wake.

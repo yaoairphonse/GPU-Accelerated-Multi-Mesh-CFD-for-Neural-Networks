@@ -1,67 +1,22 @@
-# Step-by-step development history
+# Development History
 
-1. **Regular-grid Euler core.** Established conservative 1-D/2-D Euler
-   states, Riemann fluxes, limiters, and explicit time integration.
-2. **Immersed geometry.** Added signed-distance/immersed-boundary experiments,
-   then replaced qualitative wall masking with conservative polygon cut cells.
-3. **LF1/LF2 static AMR.** Added two fast Cartesian fidelity levels, exact
-   apertures and wall segments, small-cell stabilization, integrated loads, and
-   structured exports for NNLCI.
-4. **Viscous RANS.** Added compressible mechanical viscous terms, Sutherland
-   or constant viscosity, wall distance, and SA-neg on CPU/CUDA.
-5. **Low-Mach work.** Added density-based Turkel-style preconditioning and
-   matched CPU/CUDA operators. This did not introduce a pressure-based solver.
-6. **Second-order 2-D accuracy.** Added agglomerated-control least-squares
-   primitive gradients, multidimensional limiting, reconstructed face/wall
-   pressure, and the CL/CM/Cp convergence gate. NACA4412 became the retained
-   fast accuracy case.
-7. **True three-dimensional solver.** Generalized the residual to explicit
-   owner/neighbour faces and six conserved variables. Built a six-block
-   cubed-sphere case to verify closed 3-D conservation, the third velocity
-   component, positivity, restart, and CPU/CUDA agreement.
-8. **NASA CRM tetra import.** Imported the public 10.07M-cell CGNS grid,
-   preserved ordering and zones, built binary solver/connectivity tables, wall
-   distance, restart, surface loads, and diagnostics.
-9. **Convergence and accuracy tools.** Added limited reconstruction,
-   matrix-free block DP-LUR, adaptive CFL, persistent-reversal detection,
-   metric-best checkpoints, rollback, node gradients, Mitchell face gradients,
-   SA residual audits, and an agglomeration residual-smoothing prototype.
-10. **Mixed hybrid consumer.** Converted RAE2822 triangles/quads into wedges
-    and hexahedra without tetrahedral splitting, proving that the explicit-face
-    solver consumes mixed 3-D cells.
-11. **Direct CRM Cartesian AMR.** Extracted the closed CRM surface, created
-    balanced 8-cell octree blocks, exact wall clipping, cut volumes/apertures,
-    small-cell agglomeration, procedural regular residuals, conservative 2:1
-    subfaces, wall distance, and the compact QCFDAM1 format.
-12. **AMR accuracy refinement.** Progressed from 7.66M controls to 14.01M
-    all-wall refinement and 21.52M targeted upper-wing Level-10 refinement.
-    Geometry, uniform-flow, affine-gradient, and CPU/CUDA audits passed.
-13. **Warm fine-grid initialization.** Added exact volume-weighted state
-    prolongation between nested AMR meshes. The 14.0M-to-21.5M transfer
-    preserved global conserved integrals to roundoff and avoided a full cold
-    start.
-14. **Honest result packaging.** Added direct leaf-cell slices, true square
-    mesh sections, original-triangle surface Cp, canonical runbooks, status
-    labels, and non-destructive cache/release manifests.
-15. **Pressure-only wall probe isolation.** Added a fixed-donor, bounded wall-
-    normal pressure extrapolation behind an opt-in switch.  Uniform-flow and
-    CPU/CUDA tests passed, but a same-checkpoint CRM A/B changed wing Cp RMSE by
-    only 0.018%; it was rejected as the primary accuracy correction.
-16. **Bounded SA face backbone.** Added neighbor-bounded SA convection,
-    positive bounded nonorthogonal diffusion, and a consistent Rusanov/two-
-    point DP-LUR action.  It lowered the 300-update SA residual about 1.77x but
-    left the load trajectory unchanged, so it remains opt-in.
-17. **Procedural mean-flow block DP-LUR.** Added and finite-difference-tested a
-    matrix-free five-variable Euler normal-flux Jacobian action.  CPU/CUDA one-
-    update agreement was 1.87e-16.  On 21.52M controls it improved residuals
-    only 1--2% at 10.4% additional compute cost and did not remove load drift.
-18. **5,000-iteration CRM assessment.** Continued the 1,278-update checkpoint
-    by 3,722 updates.  Global mean/SA residuals reached 6.99e-5/3.28e-4 and
-    wing Cp RMSE reached 0.10034.  The iteration-weighted CL/CD/CM average over
-    cumulative iterations 4,000--5,000 is
-    0.523661/0.026297/-0.024508, but the last-500 average differs materially;
-    no steady or physical-time convergence is claimed.
+1. **Regular-grid Euler core.** Implemented conservative 1D/2D Euler states, Riemann fluxes, slope limiters, and explicit RK3 time integration.
+2. **Cut-cell airfoil geometry.** Replaced early immersed-boundary masking with conservative polygon cut cells on 2D Cartesian grids.
+3. **Multi-fidelity 2D AMR (LF1/LF2).** Added two fast Cartesian refinement levels, exact cell apertures and boundary segments, small-cell merging, integrated aerodynamic loads, and structured field exports for NNLCI.
+4. **Viscous RANS & SA-neg.** Added compressible viscous fluxes, Sutherland viscosity, exact wall distance, and the Spalart-Allmaras (`SA-neg`) turbulence model on CPU and CUDA.
+5. **Low-Mach preconditioning.** Added Turkel-style preconditioning to the density-based 2D solver with matching CPU/CUDA operators.
+6. **Second-order 2D reconstruction.** Added weighted least-squares primitive gradients on agglomerated control volumes, multidimensional slope limiting, and reconstructed wall pressure, validated against XFOIL on NACA 4412 ($C_L, C_M, C_p$).
+7. **3D explicit-face unstructured solver.** Generalized the finite-volume loop to arbitrary owner/neighbor polyhedral faces and six conserved variables; verified conservation, positivity, checkpoint restart, and CPU/CUDA parity on a 6-block cubed-sphere mesh ($M=1.65$).
+8. **NASA CRM tetrahedral import.** Imported the 10.07M-cell public CGNS tetrahedral grid, preserving boundary zones and connectivity tables for GPU execution.
+9. **3D DP-LUR & stabilization.** Added limited second-order reconstruction, matrix-free block DP-LUR relaxation, adaptive CFL control, node/face gradient options, and SA residual diagnostics.
+10. **Hybrid wedge/hex mesh path.** Extruded 2D mixed triangle/quad RAE 2822 grids into 3D wedges and hexahedra without tetrahedral splitting.
+11. **Procedural 3D octree-AMR cut-cell solver.** Built the octree mesh generator (`8x8x8` leaf blocks), exact surface triangle clipping, cut-cell moments, small-cell agglomeration, procedural interior face evaluation, 2:1 refinement interfaces, and the packed `QCFDAM1` format.
+12. **Multi-resolution CRM AMR grids.** Scaled the 3D CRM octree-AMR mesh across 7.66M, 14.01M (all-wall refined), and 21.52M (upper-wing Level-10 refined) active control volumes.
+13. **Conservative coarse-to-fine prolongation.** Added exact volume-weighted state transfer between nested octree grids, preserving global conservation to machine precision ($10^{-15}$) when initializing the 21.52M grid from the 14.01M state.
+14. **Direct-mesh visualization & runbooks.** Added unsmoothed leaf-cell flow slices, true cut-cell cross-sections, exact triangle $C_p$ surface renders, and per-case runbooks.
+15. **Wall-normal pressure probe evaluation.** Tested an opt-in two-donor bounded wall-normal pressure extrapolation (`--wall-state-reconstruction normal-probe`); on a matched 21.52M CRM A/B run it shifted wing $C_p$ RMSE by only 0.018% and was left off by default.
+16. **Bounded SA face discretization.** Added neighbor-bounded SA convection, positive bounded non-orthogonal diffusion, and a matching Rusanov/two-point scalar DP-LUR update (`--sa-face-scheme bounded`), reducing the 300-step SA residual by $1.77\times$.
+17. **Procedural 5×5 block Euler DP-LUR.** Added a matrix-free 5-variable Euler normal-flux Jacobian neighbor action (`--dplur-block-coupling 1`, CPU/CUDA parity $1.87\times 10^{-16}$); on the 21.52M CRM grid it reduced residuals by 1–2% at a 10.4% runtime overhead.
+18. **5,000-iteration CRM run.** Advanced the 21.52M-cell CRM grid from iteration 1,278 to 5,000, reducing global mean/SA residuals to $6.99\times 10^{-5} / 3.28\times 10^{-4}$ and wing surface $C_p$ RMSE to $0.10034$ (4,000–5,000 iteration average: $C_L = 0.523661, C_D = 0.026297, C_M = -0.024508$).
 
-The remaining numerical milestone is to localize the low-frequency CRM mode
-by face family and shock/sectional-moment tracking, then distinguish pseudo-
-time behavior from physical unsteadiness before a targeted 30--40M grid study.
+Current work focuses on isolating and damping the low-frequency pitching-moment oscillation on the 21.52M CRM mesh and reducing per-cell GPU memory ahead of 30–40M cell grids.

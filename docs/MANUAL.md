@@ -410,13 +410,7 @@ conservation test.
   0.523661/0.026297/-0.024508, but the last-500 average differs and loads are
   not converged.  This pseudo-iteration average is not a URANS time average.
 
-The next CRM work is not another arbitrary long run.  First instrument face-
-family residual/load budgets and upper-wing shock/sectional-moment motion.
-Matched lower-CFL or stronger-damping branches should distinguish pseudo-time
-oscillation from a physical/numerical unsteady mode.  Only a fixed physical
-time step with converged inner iterations may be physically time-averaged.
-Then reduce AMR memory and place a 30--40M targeted refinement using shock,
-wall, tip, junction, and wake indicators.
+Ongoing CRM work focuses on isolating the low-frequency pitching-moment oscillation across procedural interior, 2:1 interface, cut-cell, and wall face families, followed by GPU memory reduction and targeted 30–40M cell refinement around the shock, wing-body junction, tip, and wake.
 
 ## 22. Reproducible cleanup
 

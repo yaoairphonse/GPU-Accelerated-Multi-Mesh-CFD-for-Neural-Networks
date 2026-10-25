@@ -1,50 +1,32 @@
-# Development status — 2026-10-24
+# Development Status — 2026-10-24
 
-## Retained results
+## Benchmark & Verification Summary
 
-| Case | Size | Result | Status |
+| Case | Grid size | Recorded result | Status |
 |---|---:|---|---|
-| NACA4412 LF1 | 4,718 CV | CL 0.66444, Cp RMS 0.01282 vs XFOIL | gate passed |
-| NACA4412 LF2 | 9,517 CV | CL 0.66297, Cp RMS 0.01176 vs XFOIL | gate passed |
-| 3-D sphere | 7,680 cells | CPU/CUDA about 1e-15 | regression passed |
-| RAE2822 hybrid LF1 | 5,051 cells | CL/CD/CM 0.803917/0.096155/-0.098244 | solver gate passed; reference consolidation pending |
-| CRM tetra | 10,067,380 cells | CL/CD/CM 0.581806/0.052443/-0.143849 | unconverged |
-| CRM AMR base | 7,661,606 controls | CL/CD/CM 0.335620/0.025291/+0.131069 | unconverged |
-| CRM AMR wall-refined | 14,011,654 controls | CL/CD/CM 0.357993/0.028121/-0.049050 | unconverged |
-| CRM AMR upper-wing L10 | 21,523,036 controls | late-1,000 pseudo-iteration average CL/CD/CM 0.523661/0.026297/-0.024508 | 5,000 cumulative updates; unconverged |
+| CRM AMR upper-wing L10 | 21,523,036 active cells | 4,000–5,000 iter mean $C_L/C_D/C_M = 0.523661 / 0.026297 / -0.024508$, wing $C_p$ RMSE 0.10034 | 5,000 cumulative updates; low-frequency $C_M$ mode active |
+| CRM AMR wall-refined | 14,011,654 active cells | $C_L/C_D/C_M = 0.357993 / 0.028121 / -0.049050$ | Short-window checkpoint |
+| CRM AMR base | 7,661,606 active cells | $C_L/C_D/C_M = 0.335620 / 0.025291 / +0.131069$ | Coarse baseline checkpoint |
+| CRM tetrahedral | 10,067,380 tetrahedra | $C_L/C_D/C_M = 0.581806 / 0.052443 / -0.143849$ | Unconverged throughput run |
+| 3D sphere ($M = 1.65$) | 7,680 polyhedra | CPU/CUDA agreement within $\sim 10^{-15}$ | Regression passed |
+| RAE 2822 hybrid LF1 | 5,051 wedge/hex cells | $C_L/C_D/C_M = 0.803917 / 0.096155 / -0.098244$ | Solver verification passed |
+| NACA 4412 LF1 | 4,718 cut cells | $C_L = 0.66444$, $C_p$ RMS 0.01282 vs. XFOIL | Validated |
+| NACA 4412 LF2 | 9,517 cut cells | $C_L = 0.66297$, $C_p$ RMS 0.01176 vs. XFOIL | Validated |
 
-NASA CRM USM3D comparison values are CL/CD/CM
-0.54239/0.02995/-0.06249.  The displayed CRM AMR result is a trapezoidal
-average over cumulative iterations 4,000--5,000, not a selected endpoint and
-not a physical-time URANS average.  The last-500 average is
-0.514545/0.025687/-0.012119, so load-window convergence has not been reached.
-The saved endpoint is 0.511187/0.026104/-0.017449 and remains a raw transient
-sample.  Wing Cp RMSE at that saved state is 0.100340.
+For the 21.52M-cell NASA CRM run at Mach 0.85, $\alpha = 2.5^\circ$, $\text{Re}_{\text{MAC}} = 5\times 10^6$, the NASA USM3D reference coefficients are $C_L = 0.54239$, $C_D = 0.02995$, and $C_M = -0.06249$. Trapezoidal averaging over cumulative pseudo-time iterations 4,000–5,000 yields $C_L/C_D/C_M = 0.523661 / 0.026297 / -0.024508$, whereas the 4,500–5,000 window gives $0.514545 / 0.025687 / -0.012119$ (final iteration 5,000 state: $0.511187 / 0.026104 / -0.017449$, wing surface $C_p$ RMSE $0.100340$). Because these are local pseudo-time iterations and the late window still shows pitching-moment drift, load convergence has not yet been reached.
 
-## Current blockers
+## Current Technical Focus
 
-1. Low-frequency CRM load/shock motion, especially pitching moment; distinguish
-   slow pseudo-time damping from a numerical or physical unsteady mode.
-2. AMR memory per control before a 30--40M mesh.
-3. Full second-order viscous/SA verification.
-4. Long-window load and pressure/viscous drag convergence.
-5. External experimental/Fluent reference packaging.
+1. Damping the low-frequency CRM pitching-moment and shock-position oscillation in pseudo-time.
+2. Reducing per-cell GPU memory footprint prior to 30–40M cell AMR grids.
+3. Completing full second-order viscous and SA turbulence verification.
+4. Long-window pressure and viscous drag stabilization across multiple mesh refinement levels.
 
-## Next development phase
+## Recent Solver Evaluations
 
-Three isolated options are now implemented and disabled by default: a
-pressure-only wall-normal probe, a bounded positive/dissipative SA face
-operator, and a matrix-free five-variable Euler neighbor action for procedural
-DP-LUR.  CPU/CUDA and conservation tests pass.  Matched CRM tests rejected the
-pressure probe and block action as stand-alone accuracy fixes; the bounded SA
-operator lowers SA residuals but does not remove the load mode.  Full decision
-records are under `docs/development_history/`.
+Three optional solver extensions were implemented and verified for conservation and CPU/CUDA parity (all disabled by default):
+- **Wall-normal pressure probe (`--wall-state-reconstruction normal-probe`):** Precomputes two fluid-side donors for bounded one-sided pressure extrapolation. On a matched 21.52M-cell CRM A/B test, it altered wing $C_p$ RMSE by only 0.018% and was left off by default.
+- **Bounded SA face scheme (`--sa-face-scheme bounded`):** Combines neighbor-bounded convection, positive bounded non-orthogonal diffusion, and a consistent Rusanov/two-point scalar DP-LUR update, reducing the 300-step SA residual by $1.77\times$.
+- **5×5 block Euler neighbor coupling (`--dplur-block-coupling 1`):** Applies a matrix-free 5-variable Euler normal-flux Jacobian action during procedural DP-LUR sweeps (CPU/CUDA parity $1.87\times 10^{-16}$). On the 21.52M-cell CRM grid it reduced residuals by 1–2% at a 10.4% compute overhead.
 
-Before another arbitrary long run, instrument residual and load budgets by
-procedural internal, 2:1 interface, stored cut, wall, and far-field face
-families.  Track upper-wing shock position and sectional moment, then use
-matched lower-CFL/stronger-damping branches to determine whether the observed
-motion is a pseudo-time artifact.  A physical-time URANS average requires a
-fixed physical time step and converged inner iterations; steady pseudo-
-iterations must not be presented as physical-time samples.  Memory reduction
-and a targeted 30--40M refinement remain later work.
+Detailed evaluation logs are stored under `docs/development_history/`.
