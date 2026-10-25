@@ -26,13 +26,11 @@ venv/
 *.npz
 !examples/**/*.npz
 
-# Local credentials and agent settings
+# Local credentials
 .env
 .env.*
 !.env.example
 /.aws/
-/.agents/
-/.codex/
 
 # Editor and operating-system files
 .DS_Store
