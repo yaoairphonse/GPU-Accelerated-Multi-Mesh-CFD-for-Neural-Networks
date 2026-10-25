@@ -88,10 +88,14 @@ bash examples/3d_crm_amr/run_upperwing.sh \
   build cuda output/3d_crm_amr
 ```
 
-The procedural AMR solver currently uses a matrix-free scalar-spectral DP-LUR
-linearization.  Five sweeps and omega 0.8 are retained.  Do not jump directly
-to 100% reconstruction: it was unstable on the base mesh.  A changed operator
-causes a legitimate residual jump, so compare trends within one operator stage.
+The procedural AMR solver defaults to a matrix-free scalar-spectral DP-LUR
+linearization.  The verified opt-in `--dplur-block-coupling 1` adds the
+five-variable Euler normal-flux Jacobian neighbor action while leaving viscous
+and SA terms scalar.  Five sweeps and omega 0.8 are retained.  The block action
+did not materially improve CRM load convergence and is not the default.  Do
+not jump directly to 100% reconstruction: it was unstable on the base mesh.  A
+changed operator causes a legitimate residual jump, so compare trends within
+one operator stage.
 
 ## 5. Coarse-to-fine warm start
 
@@ -117,8 +121,10 @@ closed wall.  It is not valid between changed optimization geometries.
 
 The retained case is Mach 0.85, alpha 2.5 degrees, Re 5M,
 `mu-star=1.7e-7`, full-model reference area 7.8185104, moment reference
-(4.8074692, 0, 0.6451777), DP-LUR CFL 1, and 50% second-order mean-flow
-reconstruction.  SA convection remains first order.
+(4.8074692, 0, 0.6451777), and 50% second-order mean-flow reconstruction.  The
+long 5,000-update assessment used DP-LUR CFL 4, five sweeps, block coupling,
+and the bounded first-order SA face option.  All are pseudo-time settings, not
+a physical time step.
 
 Every continuation writes to a new directory.  Preserve `state.bin`,
 `history.csv`, `result.json`, `method.json`, and `surface.csv` together.  A
@@ -150,13 +156,21 @@ aerodynamic convergence.  Require:
 - pressure/viscous force split stable;
 - Cp sections and integrated loads stable across at least two mesh levels.
 
-The retained endpoint is CL/CD/CM = 0.504745/0.026189/-0.102533 versus NASA
-0.54239/0.02995/-0.06249.  Wing Cp RMSE is 0.16030.  Mean residual is 1.66e-4,
-but SA is 0.00510 and loads still drift.  These numbers show refinement benefit;
-they are not a converged validation.
+After 5,000 cumulative updates, the exact cumulative-iteration 4,000--5,000
+trapezoidal average is CL/CD/CM =
+0.523661/0.026297/-0.024508 versus NASA
+0.54239/0.02995/-0.06249.  The last-500 average is
+0.514545/0.025687/-0.012119, so the average itself is not converged.  The saved
+endpoint is 0.511187/0.026104/-0.017449.  Global mean/SA residual maxima are
+6.99e-5/3.28e-4, near-field mean/SA are 0.00216/0.01149, and saved-state wing
+Cp RMSE is 0.10034.  These are pseudo-iteration diagnostics, not a physical-
+time average or a validation result.
 
 ## 9. Next grid
 
-Do not uniformly refine the far field.  Use Cp/residual maps to target the
-upper-wing shock, leading/trailing edges, wing-body junction, wing tip, and
-near wake.  Reduce per-control GPU memory before a 30--40M run.
+Do not uniformly refine the far field.  First track upper-wing shock position,
+sectional moment, and residual/load budgets by face family.  Use matched CFL
+and damping branches to determine whether the low-frequency mode is numerical
+steady pseudo-time behavior.  Then use Cp/residual maps to target the shock,
+leading/trailing edges, wing-body junction, wing tip, and near wake.  Reduce
+per-control GPU memory before a 30--40M run.

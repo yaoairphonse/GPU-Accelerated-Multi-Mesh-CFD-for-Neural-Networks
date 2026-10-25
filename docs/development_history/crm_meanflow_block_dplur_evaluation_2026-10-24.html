@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM Mean-Flow Block DP-LUR Evaluation</title>
+  <style>
+    :root{color-scheme:light;--ink:#172233;--muted:#536276;--line:#d7dee8;--wash:#f3f6fa;--blue:#1769aa;--orange:#d95f02;--red:#b3261e;--green:#1f7a4d;--purple:#7b3fa1}
+    *{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{width:min(1120px,calc(100% - 32px));margin:32px auto;padding:clamp(24px,5vw,64px);background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 35px rgba(24,34,49,.08)}
+    h1,h2{line-height:1.18}h1{margin:.15rem 0 .5rem;font-size:clamp(2rem,4vw,3.15rem)}h2{margin-top:2.2rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
+    p,li{max-width:90ch}.eyebrow{color:var(--muted);font-weight:650;letter-spacing:.08em;text-transform:uppercase}.decision{margin:28px 0;padding:18px 22px;border-left:6px solid var(--orange);background:#fff8ef}.decision strong{color:#9b4700}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.card{padding:18px;border:1px solid var(--line);border-radius:10px;background:#fbfcfe}.card h3{margin:0 0 8px}
+    table{width:100%;border-collapse:collapse;margin:18px 0;font-variant-numeric:tabular-nums}th,td{padding:10px 12px;border:1px solid var(--line);text-align:right}th:first-child,td:first-child{text-align:left}th{background:#edf2f7}.pass{color:var(--green);font-weight:700}.fail{color:var(--red);font-weight:700}.neutral{color:#9b4700;font-weight:700}
+    figure{margin:26px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff}svg{display:block;width:100%;height:auto}figcaption{margin:10px 8px 2px;color:var(--muted);font-size:.93rem}code{padding:.1em .3em;background:#eef2f6;border-radius:4px}.small{color:var(--muted);font-size:.92rem}
+    @media print{body{background:#fff}main{width:100%;margin:0;padding:20px;border:0;box-shadow:none}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">Quick CFD development record · 24 October 2026</div>
+  <h1>Procedural-AMR mean-flow block DP-LUR evaluation</h1>
+  <p class="small">Final disposition: numerically verified and retained as an opt-in research option; rejected as the current CRM load-convergence or accuracy fix.</p>
+
+  <div class="decision"><strong>Decision.</strong> Keep <code>--dplur-block-coupling 1</code> for controlled future experiments, but leave its default off. The five-variable Euler coupling is correct and stable, yet the 21.5-million-control CRM test gained only 1–2% in residuals, did not materially suppress the load mode, improved wing Cp RMSE by only 0.129%, and cost 10.4% more GPU compute time. Cancel the proposal that this block action alone will recover the missing CRM lift or moment accuracy.</div>
+
+  <h2>Question tested</h2>
+  <p>The procedural Cartesian-AMR DP-LUR operator used a scalar Rusanov neighbor coefficient for each mean-flow equation. The explicit-face tetrahedral/hybrid solver already retained the cross-variable Euler coupling. This experiment asked whether transferring that five-variable coupling would damp the remaining low-frequency CRM mode without changing the nonlinear HLLC residual, mesh, SA equation, pseudo-time step, or surface-load calculation.</p>
+
+  <h2>Implementation boundary</h2>
+  <div class="grid">
+    <section class="card"><h3>Added</h3><p>A matrix-free action of the 3-D Euler normal-flux Jacobian on the neighbor conservative update. The Rusanov spectral term and Euler action form the first-order off-diagonal DP-LUR block.</p></section>
+    <section class="card"><h3>Unchanged</h3><p>HLLC nonlinear flux, viscous residual, bounded first-order SA face scheme, scalar viscous/SA implicit terms, five Jacobi sweeps, CFL, gradients, cut-face geometry, and load integration.</p></section>
+    <section class="card"><h3>Default and scope</h3><p>The switch defaults to zero and is accepted only with the DP-LUR integrator. Tetrahedral/hybrid support and the explicit-face solver are untouched.</p></section>
+  </div>
+
+  <h2>Verification before the CRM comparison</h2>
+  <ul>
+    <li><span class="pass">Passed:</span> CPU and CUDA builds and both CTests.</li>
+    <li><span class="pass">Passed:</span> the analytic Euler Jacobian action against a central finite-difference derivative of the normal Euler flux.</li>
+    <li><span class="pass">Passed:</span> option-off regression against the previous CUDA executable; maximum state difference after one update was 4.44×10<sup>−16</sup>.</li>
+    <li><span class="pass">Passed:</span> 7,661,606-control CPU/CUDA uniform flow; maximum residual was about 4.93×10<sup>−13</sup> and global imbalance below 6.62×10<sup>−14</sup>.</li>
+    <li><span class="pass">Passed:</span> one block-coupled DP-LUR update agreed between CPU and CUDA to global relative L∞ 1.87×10<sup>−16</sup>.</li>
+  </ul>
+
+  <h2>Controlled 21.5-million-control A/B</h2>
+  <p>Both branches restarted the identical <code>crm_amr_upperwing_l10_stage6_blend050</code> checkpoint and advanced 300 updates on the RTX 4090. Common settings were five DP-LUR sweeps, relaxation 0.8, CFL 4, second-order mean-flow reconstruction with blend 0.5, bounded first-order SA convection, Mach 0.85, AOA 2.5°, and Re<sub>MAC</sub>=5 million. Only the mean-flow block switch changed.</p>
+  <table><thead><tr><th>Metric at update 300</th><th>Scalar neighbor</th><th>5×5 block neighbor</th><th>Outcome</th></tr></thead><tbody>
+    <tr><td>Global mean residual maximum</td><td>0.000335965</td><td>0.000330528</td><td>1.64% lower</td></tr>
+    <tr><td>Global normalized SA residual</td><td>0.00210086</td><td>0.00207351</td><td>1.30% lower</td></tr>
+    <tr><td>Near-field mean residual maximum</td><td>0.00675606</td><td>0.00663912</td><td>1.73% lower</td></tr>
+    <tr><td>Near-field normalized SA residual</td><td>0.0695209</td><td>0.0684461</td><td>1.55% lower</td></tr>
+    <tr><td>CD</td><td>0.03086562</td><td>0.03088461</td><td>+0.00001899</td></tr>
+    <tr><td>CL</td><td>0.37667608</td><td>0.37702526</td><td>+0.00034918</td></tr>
+    <tr><td>CM<sub>y</sub></td><td>−0.08566607</td><td>−0.08611247</td><td>−0.00044640</td></tr>
+    <tr><td>Wing Cp RMSE versus NASA</td><td>0.21370885</td><td>0.21343274</td><td>0.129% lower</td></tr>
+    <tr><td>GPU compute time</td><td>133.94 s</td><td>147.90 s</td><td>10.4% slower</td></tr>
+  </tbody></table>
+
+  <table><thead><tr><th>Registered gate</th><th>Required</th><th>Measured</th><th>Status</th></tr></thead><tbody>
+    <tr><td>Mean residual improvement</td><td>≥1.5×</td><td>1.016×</td><td class="fail">Fail</td></tr>
+    <tr><td>Load-drift reduction</td><td>≥50%</td><td>CD 0.7%; CM 15.2%; CL worsened 7.3%</td><td class="fail">Fail</td></tr>
+    <tr><td>Wing Cp RMSE</td><td>no degradation</td><td>0.129% improvement</td><td class="neutral">Neutral</td></tr>
+    <tr><td>CPU/CUDA agreement</td><td>≤1×10<sup>−14</sup></td><td>1.87×10<sup>−16</sup></td><td class="pass">Pass</td></tr>
+    <tr><td>Cost increase</td><td>small enough to justify benefit</td><td>+10.4%</td><td class="fail">Fail</td></tr>
+  </tbody></table>
+
+  <figure aria-labelledby="figure-caption">
+    <svg id="diagnostic-figure" viewBox="0 0 1080 690" role="img" aria-label="Scalar and block DP-LUR residual and load histories"></svg>
+    <figcaption id="figure-caption">Figure 1. Exact 25-update samples from the matched runs. The block curves are only marginally below the scalar residuals. Load differences remain small but do not collapse toward zero; the final CM shift and the nearly unchanged last-window slopes confirm that the low-frequency mode remains.</figcaption>
+  </figure>
+
+  <h2>Accuracy context</h2>
+  <p>At this transient 300-update endpoint, NASA USM3D values are CL=0.54239, CD=0.02995, and CM=−0.06249. The block endpoint therefore remains −30.49% in CL, +3.12% in CD, and −37.80% relative to the NASA CM magnitude. The unusually close instantaneous CD is not evidence of convergence: CD, CL, and CM are all still moving, and the two branches follow essentially the same trajectory.</p>
+
+  <h2>What this result cancels—and the next useful direction</h2>
+  <p>This result cancels further tuning of the mean-flow Euler neighbor block as a stand-alone response to the CRM error. It does not invalidate the implementation: the analytic derivative, CPU/CUDA agreement, default regression, conservation audit, and stable full-scale run justify retaining it behind an explicit option.</p>
+  <p>The unresolved mode is now insensitive to both the bounded SA scalar repair and this mean-flow block neighbor action. The next high-value diagnostic should localize where the residual and load oscillation are generated—wall/cut faces, far field, or 2:1 interfaces—before adding another scheme. A face-family residual budget and load-correlated spatial residual map are more informative than immediately raising formal order or adding wall-normal cells.</p>
+
+  <h2>Retention</h2>
+  <p>This HTML embeds the complete decision data and the only figure. Temporary default-regression, CPU/CUDA, uniform-audit, and 21.5-million-control A/B outputs were deleted after the report and source checks passed. The shared CRM mesh, original checkpoint, and reusable CPU/CUDA build directories were retained. No production default was changed.</p>
+
+  <script>
+  (()=>{
+    const it=[0,25,50,75,100,125,150,175,200,225,250,275,300];
+    const scalar={mean:[.000410624857,.000408942501,.000405170098,.000401304707,.000397328401,.000391897815,.000384459402,.000375832562,.000365931488,.000356188330,.000347662542,.000340902830,.000335964627],nearSA:[.136238725,.106105049,.097731692,.092004469,.087336071,.083128066,.079044681,.075565443,.073014311,.071375547,.070406662,.069822075,.069520872],cd:[.0390474703,.0378008348,.0367734991,.0359473779,.0352558898,.0346219423,.0339853159,.0333174878,.0326605769,.0320794322,.0315959678,.0311986013,.0308656200],cl:[.3772802085,.3788115706,.3791347041,.3785816785,.3775235650,.3763466031,.3753042491,.3744867627,.3739944678,.3739130639,.3742832796,.3751603282,.3766760787],cm:[-.1175066855,-.1163781495,-.1121919846,-.1059983127,-.0994910547,-.0941584618,-.0907697708,-.0891271444,-.0884843624,-.0879571143,-.0871005777,-.0861385405,-.0856660692]};
+    const block={mean:[.000410624857,.000407646037,.000403227810,.000398771410,.000394182870,.000388218022,.000380433118,.000371461066,.000361350416,.000351488555,.000342800574,.000335818237,.000330527843],nearSA:[.136238725,.106107451,.097656751,.091851440,.087093600,.082805550,.078648095,.075108209,.072503746,.070791416,.069707008,.068945424,.068446149],cd:[.0390474703,.0377844482,.0367679066,.0359449060,.0352491460,.0346075295,.0339648508,.0333058223,.0326673095,.0320968553,.0316145103,.0312144789,.0308846109],cl:[.3772802085,.3787975964,.3790788589,.3785169084,.3774845273,.3763447383,.3753279641,.3745471096,.3741013436,.3740594080,.3744780855,.3754326180,.3770252581],cm:[-.1175066855,-.1162489320,-.1119783971,-.1058545128,-.0995326295,-.0943923430,-.0910638128,-.0893286717,-.0885026237,-.0878551666,-.0870567584,-.0863105761,-.0861124720]};
+    const svg=document.getElementById('diagnostic-figure'),NS='http://www.w3.org/2000/svg';
+    const add=(tag,a,t)=>{const e=document.createElementNS(NS,tag);Object.entries(a||{}).forEach(([k,v])=>e.setAttribute(k,v));if(t!==undefined)e.textContent=t;svg.appendChild(e);return e};
+    add('rect',{x:0,y:0,width:1080,height:690,fill:'#fff'});add('text',{x:55,y:28,fill:'#172233','font-size':18,'font-weight':700},'Same-checkpoint scalar versus 5×5 block DP-LUR');
+    const panels=[
+      {x:55,y:58,w:455,h:245,title:'Global mean residual maximum',a:scalar.mean,b:block.mean,range:[.00032,.00042],fmt:v=>v.toExponential(2)},
+      {x:570,y:58,w:455,h:245,title:'Near-field normalized SA residual',a:scalar.nearSA,b:block.nearSA,range:[.06,.14],fmt:v=>v.toFixed(2)},
+      {x:55,y:372,w:455,h:245,title:'Block − scalar load differences',delta:true,range:[-.00055,.00045],fmt:v=>(v*1e4).toFixed(1)+'e−4'},
+      {x:570,y:372,w:455,h:245,title:'CM_y histories',a:scalar.cm,b:block.cm,range:[-.12,-.08],fmt:v=>v.toFixed(2)}
+    ];
+    const path=(values,p)=>values.map((v,i)=>`${i?'L':'M'}${p.x+i*p.w/(values.length-1)},${p.y+p.h-(v-p.range[0])*p.h/(p.range[1]-p.range[0])}`).join(' ');
+    panels.forEach((p,index)=>{
+      add('text',{x:p.x,y:p.y-10,fill:'#172233','font-size':15,'font-weight':650},p.title);add('rect',{x:p.x,y:p.y,width:p.w,height:p.h,fill:'#fbfcfe',stroke:'#d7dee8'});
+      for(let j=0;j<=4;j++){const yy=p.y+j*p.h/4,val=p.range[1]-j*(p.range[1]-p.range[0])/4;add('line',{x1:p.x,y1:yy,x2:p.x+p.w,y2:yy,stroke:'#e4e9ef'});add('text',{x:p.x-8,y:yy+4,'text-anchor':'end',fill:'#536276','font-size':11},p.fmt(val))}
+      [0,100,200,300].forEach(v=>{const xx=p.x+v*p.w/300;add('text',{x:xx,y:p.y+p.h+18,'text-anchor':'middle',fill:'#536276','font-size':11},v)});
+      if(index===2){add('line',{x1:p.x,y1:p.y+p.h-(0-p.range[0])*p.h/(p.range[1]-p.range[0]),x2:p.x+p.w,y2:p.y+p.h-(0-p.range[0])*p.h/(p.range[1]-p.range[0]),stroke:'#7f8b99','stroke-dasharray':'4 4'});[['CD','cd','#1769aa'],['CL','cl','#d95f02'],['CM','cm','#7b3fa1']].forEach(([label,key,color])=>{const d=block[key].map((v,i)=>v-scalar[key][i]);add('path',{d:path(d,p),fill:'none',stroke:color,'stroke-width':2.2});});}
+      else{add('path',{d:path(p.a,p),fill:'none',stroke:'#7f8b99','stroke-width':2.4});add('path',{d:path(p.b,p),fill:'none',stroke:'#d95f02','stroke-width':2.4});}
+      add('text',{x:p.x+p.w/2,y:p.y+p.h+34,'text-anchor':'middle',fill:'#536276','font-size':11},'update');
+    });
+    add('line',{x1:60,y1:650,x2:92,y2:650,stroke:'#7f8b99','stroke-width':3});add('text',{x:100,y:654,fill:'#536276','font-size':12},'scalar');add('line',{x1:165,y1:650,x2:197,y2:650,stroke:'#d95f02','stroke-width':3});add('text',{x:205,y:654,fill:'#536276','font-size':12},'5×5 block');
+    [['CD','#1769aa'],['CL','#d95f02'],['CM','#7b3fa1']].forEach(([t,c],i)=>{add('line',{x1:335+i*90,y1:650,x2:365+i*90,y2:650,stroke:c,'stroke-width':3});add('text',{x:372+i*90,y:654,fill:'#536276','font-size':12},t)});
+  })();
+  </script>
+</main></body></html>

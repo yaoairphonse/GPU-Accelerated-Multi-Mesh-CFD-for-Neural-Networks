@@ -1,0 +1,27 @@
+{
+  "status": "unconverged pseudo-time diagnostic",
+  "averaging_method": "trapezoidal integration over continuation-iteration coordinate with linear interpolation at the exact window boundary",
+  "warning": "These are steady pseudo-iteration averages, not physical-time URANS averages.",
+  "checkpoint_cumulative_iteration": 1278,
+  "final_cumulative_iteration": 5000,
+  "NASA_USM3D": {
+    "CD": 0.02995,
+    "CL": 0.54239,
+    "CM_y": -0.06249
+  },
+  "windows": {
+    "last_500": {
+      "cumulative_iteration_range": [4500, 5000],
+      "CD": {"mean": 0.025686875364101334, "rms_about_mean": 0.00017090828981279792, "minimum": 0.0255172084851343, "maximum": 0.02610406398198, "end_minus_start": 0.00026113888503654856, "NASA_relative_difference_percent": -14.2341390180256},
+      "CL": {"mean": 0.514544732499653, "rms_about_mean": 0.002820046846925099, "minimum": 0.5111869802534507, "maximum": 0.5206943185578284, "end_minus_start": -0.009507338304377777, "NASA_relative_difference_percent": -5.133809159524879},
+      "CM_y": {"mean": -0.01211853195728299, "rms_about_mean": 0.003696931471146912, "minimum": -0.019890164719955347, "maximum": -0.0079601589319304, "end_minus_start": 0.002441341664490046, "NASA_relative_difference_percent": 80.60724602771165}
+    },
+    "last_1000": {
+      "cumulative_iteration_range": [4000, 5000],
+      "CD": {"mean": 0.02629716616651883, "rms_about_mean": 0.000801564519286518, "minimum": 0.0255172084851343, "maximum": 0.028185964011033477, "end_minus_start": -0.002081900029053476, "NASA_relative_difference_percent": -12.196440178568182},
+      "CL": {"mean": 0.5236613158599587, "rms_about_mean": 0.010650370767055484, "minimum": 0.5111869802534507, "maximum": 0.542271475889196, "end_minus_start": -0.031084495635745335, "NASA_relative_difference_percent": -3.452992153255289},
+      "CM_y": {"mean": -0.024507580930122393, "rms_about_mean": 0.01440259475699253, "minimum": -0.0487421431591954, "maximum": -0.0079601589319304, "end_minus_start": 0.029365938428210926, "NASA_relative_difference_percent": 60.78159556709491}
+    }
+  },
+  "saved_endpoint": {"CD": 0.026104063981980095, "CL": 0.5111869802534508, "CM_y": -0.017448823055465343}
+}

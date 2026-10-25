@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CRM 5,000-Iteration Long-Run Assessment</title>
+  <style>
+    :root{color-scheme:light;--ink:#172233;--muted:#536276;--line:#d7dee8;--wash:#f3f6fa;--blue:#1769aa;--orange:#d95f02;--red:#b3261e;--green:#1f7a4d;--purple:#7b3fa1}
+    *{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}main{width:min(1120px,calc(100% - 32px));margin:32px auto;padding:clamp(24px,5vw,64px);background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 35px rgba(24,34,49,.08)}h1,h2{line-height:1.18}h1{margin:.15rem 0 .5rem;font-size:clamp(2rem,4vw,3.15rem)}h2{margin-top:2.2rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}p,li{max-width:90ch}.eyebrow{color:var(--muted);font-weight:650;letter-spacing:.08em;text-transform:uppercase}.decision{margin:28px 0;padding:18px 22px;border-left:6px solid var(--orange);background:#fff8ef}.decision strong{color:#9b4700}table{width:100%;border-collapse:collapse;margin:18px 0;font-variant-numeric:tabular-nums}th,td{padding:10px 12px;border:1px solid var(--line);text-align:right}th:first-child,td:first-child{text-align:left}th{background:#edf2f7}.pass{color:var(--green);font-weight:700}.fail{color:var(--red);font-weight:700}figure{margin:26px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff}svg{display:block;width:100%;height:auto}figcaption{margin:10px 8px 2px;color:var(--muted);font-size:.93rem}.small{color:var(--muted);font-size:.92rem}code{padding:.1em .3em;background:#eef2f6;border-radius:4px}@media print{body{background:#fff}main{width:100%;margin:0;padding:20px;border:0;box-shadow:none}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">Quick CFD development record · 24 October 2026</div>
+  <h1>CRM long run to 5,000 cumulative outer iterations</h1>
+  <p class="small">21,523,036 control volumes · CUDA · five-sweep block DP-LUR · bounded SA · Mach 0.85 · AOA 2.5° · Re<sub>MAC</sub> 5 million</p>
+
+  <div class="decision"><strong>Decision.</strong> The earlier 300-update endpoint was much too short to represent the final aerodynamic coefficients. Extending the same 1,278-iteration checkpoint by 3,722 updates reduced the residuals by factors of 4–12 and cut wing Cp RMSE from 0.2134 to 0.1003. Nevertheless, the last 500–1,000 updates still contain large CL/CD/CM motion, especially CM. The 5,000-iteration state is useful progress but remains unconverged and must not be selected as a certified NASA comparison.</div>
+
+  <h2>Run definition and cost</h2>
+  <ul>
+    <li>Original checkpoint: 1,278 outer iterations; continuation: 3,722; cumulative total: 5,000.</li>
+    <li>Each outer iteration used five DP-LUR relaxation sweeps, for approximately 25,000 cumulative sweeps.</li>
+    <li>Continuation GPU compute time: 1,658.84 s (27 min 38.8 s); solver process time: 1,670.95 s (27 min 51.0 s).</li>
+    <li>Including the retained cold-start checkpoint, cumulative solve compute is about 35.8 min and cumulative solver process time about 37.1 min. The earlier 5.3-min mesh construction is separate.</li>
+  </ul>
+
+  <h2>Late-iteration averages and NASA USM3D reference</h2>
+  <p>The headline comparison now uses the exact cumulative-iteration window from 4,000 to 5,000. Values are trapezoidally integrated over the iteration coordinate, including interpolation at the window boundary; they are not a simple average of unequally spaced output rows. These remain pseudo-iteration averages, not physical-time URANS averages.</p>
+  <table><thead><tr><th>Quantity</th><th>Last 1,000 average</th><th>Last 500 average</th><th>Endpoint</th><th>NASA USM3D</th><th>Last 1,000 difference</th></tr></thead><tbody>
+    <tr><td>CD</td><td>0.026297</td><td>0.025687</td><td>0.026104</td><td>0.029950</td><td>−12.20%</td></tr>
+    <tr><td>CL</td><td>0.523661</td><td>0.514545</td><td>0.511187</td><td>0.542390</td><td>−3.45%</td></tr>
+    <tr><td>CM<sub>y</sub></td><td>−0.024508</td><td>−0.012119</td><td>−0.017449</td><td>−0.062490</td><td>60.78% too small in magnitude</td></tr>
+  </tbody></table>
+  <table><thead><tr><th>Surface-pressure metric at the saved state</th><th>Value</th></tr></thead><tbody>
+    <tr><td>Wing area-weighted Cp RMSE</td><td>0.100340</td></tr>
+    <tr><td>Upper/lower-wing Cp RMSE</td><td>0.128134 / 0.065591</td></tr>
+    <tr><td>Whole-surface Cp RMSE within 0.02 MAC match distance</td><td>0.095166</td></tr>
+  </tbody></table>
+  <p>The last-1,000 average replaces the endpoint as the displayed aerodynamic result, but it is still not a converged accuracy claim. During the long run, CD crossed the NASA value more than once, CL briefly reached 0.54250, and CM ranged from approximately −0.111 to −0.008. Individual crossings and the saved endpoint are transient samples.</p>
+
+  <h2>Residual reduction</h2>
+  <table><thead><tr><th>Residual</th><th>Continuation start</th><th>Final</th><th>Reduction factor</th></tr></thead><tbody>
+    <tr><td>Global mean-flow maximum</td><td>4.106×10<sup>−4</sup></td><td>6.992×10<sup>−5</sup></td><td>5.87×</td></tr>
+    <tr><td>Global normalized SA</td><td>3.892×10<sup>−3</sup></td><td>3.281×10<sup>−4</sup></td><td>11.86×</td></tr>
+    <tr><td>Near-field mean-flow maximum</td><td>9.201×10<sup>−3</sup></td><td>2.161×10<sup>−3</sup></td><td>4.26×</td></tr>
+    <tr><td>Near-field normalized SA</td><td>1.362×10<sup>−1</sup></td><td>1.149×10<sup>−2</sup></td><td>11.86×</td></tr>
+  </tbody></table>
+
+  <h2>Load-window convergence test</h2>
+  <table><thead><tr><th>Exact cumulative window</th><th>Quantity</th><th>Iteration-weighted mean</th><th>RMS about mean</th><th>Min–max</th><th>End − start</th></tr></thead><tbody>
+    <tr><td rowspan="3">4,500–5,000</td><td>CD</td><td>0.025687</td><td>0.000171</td><td>0.025517–0.026104</td><td>+0.000261</td></tr>
+    <tr><td>CL</td><td>0.514545</td><td>0.002820</td><td>0.511187–0.520694</td><td>−0.009507</td></tr>
+    <tr><td>CM<sub>y</sub></td><td>−0.012119</td><td>0.003697</td><td>−0.019890–−0.007960</td><td>+0.002441</td></tr>
+    <tr><td rowspan="3">4,000–5,000</td><td>CD</td><td>0.026297</td><td>0.000802</td><td>0.025517–0.028186</td><td>−0.002082</td></tr>
+    <tr><td>CL</td><td>0.523661</td><td>0.010650</td><td>0.511187–0.542271</td><td>−0.031084</td></tr>
+    <tr><td>CM<sub>y</sub></td><td>−0.024508</td><td>0.014403</td><td>−0.048742–−0.007960</td><td>+0.029366</td></tr>
+  </tbody></table>
+  <p class="fail">The registered load-window stopping conditions are not satisfied.</p>
+
+  <figure aria-labelledby="figure-caption">
+    <svg id="history" viewBox="0 0 1080 700" role="img" aria-label="Residual and aerodynamic load histories for the 3,722-update continuation"></svg>
+    <figcaption id="figure-caption">Figure 1. Exact stored 100-update samples plus the final 3,722 point. Residuals fall substantially, but the aerodynamic loads traverse broad, slow paths. The figure uses continuation iteration on the horizontal axis; add 1,278 to obtain cumulative iteration.</figcaption>
+  </figure>
+
+  <h2>Interpretation and next diagnostic</h2>
+  <p>More iterations materially improve Cp and bring CL into the correct qualitative range, so the 300-update snapshot was indeed premature. However, 5,000 cumulative iterations do not establish a steady solution. The history is compatible with a very slowly damped mode, a pseudo-time oscillation, or a physical/numerical unsteady mode; one long trajectory is not enough to distinguish them.</p>
+  <p>Do not simply select the best-looking iteration. The next numerical experiment should first separate residual and load contributions by face family—procedural internal, 2:1 interface, stored cut face, wall, and far field—and correlate them with the CM oscillation. A shorter A/B using lower CFL or stronger pseudo-time damping can then test whether the mode is an implicit-iteration artifact before spending another full 5,000 updates.</p>
+
+  <h2>Retention</h2>
+  <p>The canonical run is retained at <code>/home/lyao76/CFD_cache/runs/crm_amr_upperwing_l10_block_total5000_20261024</code>, including state, history, surface loads, result metadata, method metadata, NASA comparison, and machine-readable late-window averages. This HTML embeds the complete numerical decision and its only figure; it has no external script, stylesheet, or image dependency.</p>
+
+  <script>
+  (()=>{
+    const x=[0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2600,2700,2800,2900,3000,3100,3200,3300,3400,3500,3600,3700,3722];
+    const global=[.003891731,.002600232,.002208481,.002073510,.001837969,.001713772,.001874607,.001852518,.001582586,.001351967,.001254390,.001266589,.001299777,.001352803,.001474250,.001546188,.001325396,.001038329,.000879594,.000829967,.000828159,.000800421,.000758349,.000759399,.000753150,.000731520,.000682555,.000617340,.000565807,.000532209,.000505470,.000468444,.000424887,.000397004,.000381052,.000368064,.000352361,.000332329,.000328081];
+    const near=[.136238725,.087093600,.072503746,.068446149,.062439975,.058800434,.066942408,.065109437,.054375317,.046889203,.044744755,.043762040,.044126337,.047080769,.052106869,.054109908,.044423895,.034049364,.030018268,.028971274,.028210830,.026806763,.025993479,.026157426,.025541757,.024411489,.022674425,.020573991,.019191624,.018033151,.016666516,.015205950,.013923664,.013237879,.012835799,.012564553,.012225961,.011635643,.011487681];
+    const cd=[.039047470,.035249146,.032667309,.030884611,.030325977,.030603793,.030911527,.029994606,.027544880,.024449238,.022052474,.021098824,.021308534,.022489280,.024330279,.025922332,.026817579,.027234689,.027660992,.028310417,.029138899,.029998579,.030481036,.030323405,.029761316,.029184037,.028739739,.028306135,.027759904,.027201783,.026718950,.026275424,.025900926,.025637284,.025517208,.025553877,.025724243,.026019144,.026104064];
+    const cl=[.377280208,.377484527,.374101344,.377025258,.388557175,.401331308,.416356468,.431928953,.452307729,.474332858,.488972821,.494234257,.494005053,.495292512,.501726464,.510848933,.520318167,.528215260,.531387860,.530602271,.529053836,.528542506,.529283193,.530933259,.533356817,.536631331,.540326520,.542504563,.541445076,.537345803,.531674666,.526108462,.521495405,.517854102,.515168550,.513325369,.512127794,.511328601,.511186980];
+    const cm=[-.117506686,-.099532629,-.088502624,-.086112472,-.093390157,-.103428924,-.109575859,-.089879797,-.063982066,-.056718725,-.065607325,-.075389233,-.075649128,-.075651925,-.085603011,-.099322920,-.109642395,-.110988652,-.095646893,-.070054801,-.046026964,-.028769569,-.018369500,-.013974016,-.015263115,-.022769279,-.035452663,-.046271141,-.048742143,-.043749805,-.035736218,-.028145791,-.021352710,-.014704777,-.009577184,-.007960159,-.010509364,-.016036339,-.017448823];
+    const svg=document.getElementById('history'),NS='http://www.w3.org/2000/svg',add=(t,a,s)=>{const e=document.createElementNS(NS,t);Object.entries(a||{}).forEach(([k,v])=>e.setAttribute(k,v));if(s!==undefined)e.textContent=s;svg.appendChild(e);return e};
+    add('rect',{x:0,y:0,width:1080,height:700,fill:'#fff'});add('text',{x:55,y:28,fill:'#172233','font-size':18,'font-weight':700},'3,722-update continuation: residual reduction and low-frequency loads');
+    const panels=[{x:60,y:65,w:440,h:245,title:'Total residual maxima (log scale)',series:[[global,'#1769aa'],[near,'#d95f02']],range:[-4,-.7],log:true,refs:[]},{x:580,y:65,w:440,h:245,title:'Lift coefficient',series:[[cl,'#1769aa']],range:[.35,.56],refs:[[.54239,'NASA']]},{x:60,y:390,w:440,h:245,title:'Drag coefficient',series:[[cd,'#d95f02']],range:[.019,.041],refs:[[.02995,'NASA']]},{x:580,y:390,w:440,h:245,title:'Pitching-moment coefficient',series:[[cm,'#7b3fa1']],range:[-.125,.01],refs:[[-.06249,'NASA']]}];
+    panels.forEach(p=>{add('text',{x:p.x,y:p.y-11,fill:'#172233','font-size':15,'font-weight':650},p.title);add('rect',{x:p.x,y:p.y,width:p.w,height:p.h,fill:'#fbfcfe',stroke:'#d7dee8'});for(let j=0;j<=4;j++){const yy=p.y+j*p.h/4,val=p.range[1]-j*(p.range[1]-p.range[0])/4;add('line',{x1:p.x,y1:yy,x2:p.x+p.w,y2:yy,stroke:'#e4e9ef'});add('text',{x:p.x-8,y:yy+4,'text-anchor':'end',fill:'#536276','font-size':11},p.log?'10^'+val.toFixed(1):val.toFixed(3))}p.refs.forEach(([v,label])=>{const yy=p.y+p.h-(v-p.range[0])*p.h/(p.range[1]-p.range[0]);add('line',{x1:p.x,y1:yy,x2:p.x+p.w,y2:yy,stroke:'#b3261e','stroke-dasharray':'6 4'});add('text',{x:p.x+p.w-5,y:yy-5,'text-anchor':'end',fill:'#b3261e','font-size':11},label)});p.series.forEach(([values,color])=>{const d=values.map((raw,i)=>{const v=p.log?Math.log10(raw):raw,xx=p.x+x[i]*p.w/3722,yy=p.y+p.h-(v-p.range[0])*p.h/(p.range[1]-p.range[0]);return(i?'L':'M')+xx+','+yy}).join(' ');add('path',{d,fill:'none',stroke:color,'stroke-width':2.3})});[0,1000,2000,3000,3722].forEach(v=>add('text',{x:p.x+v*p.w/3722,y:p.y+p.h+18,'text-anchor':'middle',fill:'#536276','font-size':11},v));add('text',{x:p.x+p.w/2,y:p.y+p.h+35,'text-anchor':'middle',fill:'#536276','font-size':11},'continuation iteration')});
+    add('line',{x1:70,y1:675,x2:102,y2:675,stroke:'#1769aa','stroke-width':3});add('text',{x:110,y:679,fill:'#536276','font-size':12},'global / CL');add('line',{x1:225,y1:675,x2:257,y2:675,stroke:'#d95f02','stroke-width':3});add('text',{x:265,y:679,fill:'#536276','font-size':12},'near / CD');add('line',{x1:370,y1:675,x2:402,y2:675,stroke:'#7b3fa1','stroke-width':3});add('text',{x:410,y:679,fill:'#536276','font-size':12},'CM');add('line',{x1:470,y1:675,x2:502,y2:675,stroke:'#b3261e','stroke-width':2,'stroke-dasharray':'6 4'});add('text',{x:510,y:679,fill:'#536276','font-size':12},'NASA USM3D');
+  })();
+  </script>
+</main></body></html>

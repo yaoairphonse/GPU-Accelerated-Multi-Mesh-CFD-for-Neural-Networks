@@ -152,6 +152,11 @@ face gradient and its approximate implicit operator can develop a low-frequency
 reversal on highly non-orthogonal cells.  A two-point/full-gradient blend was
 added as a diagnostic continuation control, not as an accuracy recommendation.
 The procedural AMR path uses a corrected two-point viscous face construction.
+Its opt-in `--sa-face-scheme bounded` combines neighbor-bounded convection, a
+positive bounded nonorthogonal diffusion correction, and a consistent
+Rusanov/two-point scalar DP-LUR action.  It reduced a matched CRM SA residual
+about 1.77x without changing the load trajectory, so it is retained as a
+research option rather than the default or an accuracy claim.
 
 No k-epsilon, k-omega/SST, transition, DES, or LES model is implemented.
 
@@ -276,12 +281,13 @@ fragment centroid, including the configured reconstruction blend and pressure
 positivity guard.  It is a numerical reconstruction, not calibration to NASA
 data.
 
-A future accuracy experiment may replace this centroid-gradient pressure with
-one-sided samples taken along the surface normal into the fluid, followed by a
-limited extrapolation back to the wall.  Such a wall-normal probe is not yet
-implemented in the production static-AMR 2-D or procedural-AMR 3-D force path.
-Pressure, density, and temperature must remain equation-of-state consistent;
-they must not be corrected independently.
+The opt-in `normal-probe` pressure experiment precomputes two fluid-side donors,
+performs a bounded one-sided extrapolation, and uses the same corrected
+pressure in the residual, surface output, and loads.  It deliberately does not
+change density, temperature, velocity, stress, or SA.  A matched CRM test
+changed wing Cp RMSE by only 0.018%, so it remains disabled and is rejected as
+the primary wall-accuracy correction.  Any future thermodynamic extension must
+keep pressure, density, and temperature equation-of-state consistent.
 
 ## 14. Pseudo-time integration
 
@@ -302,10 +308,12 @@ radii and forward/backward neighbour sweeps.  Conceptually,
 is approximated by lower and upper relaxation without assembling a global
 matrix.  The explicit-face solver optionally applies a matrix-free
 five-variable Euler normal-flux Jacobian action to mean-flow neighbour
-corrections, with a separate scalar SA update.  The AMR solver currently uses
-a less expensive scalar-spectral neighbour action.  More sweeps solve the
-approximate system more closely but cannot repair an incompatible spatial
-operator; a 5-vs-20-sweep SA experiment demonstrated this limitation.
+corrections, with a separate scalar SA update.  The procedural AMR solver now
+exposes the same action through `--dplur-block-coupling 1`; its default remains
+the less expensive scalar-spectral neighbour action.  On 21.52M controls, the
+block action improved residuals only 1--2% at 10.4% additional compute cost and
+did not remove load drift.  More sweeps solve the approximate system more
+closely but cannot repair an incompatible spatial operator.
 
 ## 15. Warm start and continuation controls
 
@@ -397,12 +405,18 @@ conservation test.
 - RAE2822 LF1: solver gate passed; full lineage and Fluent reference still
   need consolidation.
 - CRM tetra: solver and diagnostics work, but SA and drag remain unconverged.
-- CRM AMR 21.52M: best current CL/Cp; SA and loads still drift.
+- CRM AMR 21.52M: the 5,000-update state has wing Cp RMSE 0.10034; its
+  cumulative-iteration 4,000--5,000 average CL/CD/CM is
+  0.523661/0.026297/-0.024508, but the last-500 average differs and loads are
+  not converged.  This pseudo-iteration average is not a URANS time average.
 
-The next CRM work is not another arbitrary long run.  First reduce AMR memory,
-make the SA face operator and implicit linearization a compatible dissipative
-pair, re-converge the 21.52M mesh, and then place a 30--40M targeted refinement
-using shock, wall, tip, junction, and wake indicators.
+The next CRM work is not another arbitrary long run.  First instrument face-
+family residual/load budgets and upper-wing shock/sectional-moment motion.
+Matched lower-CFL or stronger-damping branches should distinguish pseudo-time
+oscillation from a physical/numerical unsteady mode.  Only a fixed physical
+time step with converged inner iterations may be physically time-averaged.
+Then reduce AMR memory and place a 30--40M targeted refinement using shock,
+wall, tip, junction, and wake indicators.
 
 ## 22. Reproducible cleanup
 

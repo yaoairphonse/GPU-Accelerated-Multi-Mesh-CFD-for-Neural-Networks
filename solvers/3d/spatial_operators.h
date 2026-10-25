@@ -24,6 +24,52 @@ QCFD_HD inline void corrected_face_gradient(
  for(int j=0;j<3;++j)gradient[j]+=correction*displacement[j];
 }
 
+// Limit a face increment to the interval between two neighboring cell values.
+// This is intentionally sign agnostic so it remains compatible with SA-neg.
+QCFD_HD inline double neighbor_bounded_increment(double increment,double difference){
+ if(increment*difference<=0)return 0;
+ if(fabs(increment)>fabs(difference))return difference;
+ return increment;
+}
+
+// Blend a high-order normal gradient with its positive two-point backbone and
+// bound the ratio to that backbone.  For nonzero jumps this guarantees
+// jump*gradient >= floor*jump^2/distance, so -k*gradient is dissipative for
+// every k>0.  Zero jumps have zero diffusion energy and retain the high-order
+// tangentially induced normal gradient.
+QCFD_HD inline double bounded_diffusion_normal_gradient(
+ double high_order,double jump,double distance,double correction_blend,
+ double ratio_floor,double ratio_ceiling){
+ if(!(distance>0))return high_order;
+ const double two_point=jump/distance;
+ if(two_point==0)return high_order;
+ const double candidate=two_point+correction_blend*(high_order-two_point);
+ const double ratio=candidate/two_point;
+ return fmin(ratio_ceiling,fmax(ratio_floor,ratio))*two_point;
+}
+
+// Apply the three-dimensional Euler normal-flux Jacobian to a conservative
+// perturbation.  This matrix-free form retains density, momentum, pressure,
+// and energy coupling without storing a 5x5 block for every face.
+QCFD_HD inline void euler_normal_flux_jacobian_action(
+ const double* primitive,const double* conservative_perturbation,
+ const double* normal,double gamma,double* action){
+ const double rho=primitive[0],density_change=conservative_perturbation[0];
+ const double normal_velocity=dot3(primitive+1,normal);
+ const double speed2=dot3(primitive+1,primitive+1);
+ const double energy=primitive[4]/(gamma-1)+.5*rho*speed2;
+ double velocity_change[3],normal_velocity_change=0,velocity_work=0;
+ for(int j=0;j<3;++j){
+  velocity_change[j]=(conservative_perturbation[j+1]-primitive[j+1]*density_change)/rho;
+  normal_velocity_change+=velocity_change[j]*normal[j];
+  velocity_work+=primitive[j+1]*conservative_perturbation[j+1];
+ }
+ const double pressure_change=(gamma-1)*(conservative_perturbation[4]-velocity_work+.5*speed2*density_change);
+ action[0]=conservative_perturbation[1]*normal[0]+conservative_perturbation[2]*normal[1]+conservative_perturbation[3]*normal[2];
+ for(int j=0;j<3;++j)action[j+1]=conservative_perturbation[j+1]*normal_velocity+rho*primitive[j+1]*normal_velocity_change+pressure_change*normal[j];
+ action[4]=(conservative_perturbation[4]+pressure_change)*normal_velocity+(energy+primitive[4])*normal_velocity_change;
+}
+
 QCFD_HD inline bool mitchell_face_gradient(const double* center_direction,
                                             const double* edge1,const double* edge2,
                                             double center_difference,double edge1_difference,

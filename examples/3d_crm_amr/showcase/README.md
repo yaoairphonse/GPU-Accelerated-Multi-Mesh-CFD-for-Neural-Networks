@@ -15,5 +15,7 @@ intersections with the CRM surface.  No scattered interpolation is used.
 - [y-z block overview and actual-cell zoom at x/MAC=5](crm_amr_yz_x5_mesh.png)
 
 The mesh has 21,523,036 agglomerated controls and a minimum Cartesian spacing
-of 0.00390625 MAC.  The displayed state is a transient development state; it
-is not a converged CRM drag result.
+of 0.00390625 MAC.  The refreshed figures use the cumulative 5,000-iteration
+state.  It remains a transient development state rather than a converged CRM
+drag result; the reported comparison uses the less noisy last-1,000-iteration
+pseudo-iteration average.

@@ -17,10 +17,10 @@ Timings below were measured on a single NVIDIA RTX 4090 and reflect end-to-end p
 | NACA 4412 LF1 / LF2 | 0.20 | 4,718 / 9,517 cells | 20.07 / 33.09 s total process time | $C_L$, $C_M$, and surface $C_p$ match XFOIL reference |
 | RAE 2822 hybrid LF1 | 0.78 | 5,051 wedge/hex cells | 49,000 DP-LUR sweeps in 11.24 s | Solver verification passed |
 | NASA CRM tetrahedral | 0.85 | 10,067,380 tetrahedra | 5,850 DP-LUR sweeps in 600.20 s (610.35 s total) | Throughput test; flow state not yet converged |
-| NASA CRM Cartesian AMR | 0.85 | 21,523,036 active cells (from 31.48M octree cells) | 297 DP-LUR sweeps in 121.19 s (0.408 s/iter) | Large-grid throughput test; flow state not yet converged |
+| NASA CRM Cartesian AMR | 0.85 | 21,523,036 active cells (from 31.48M octree cells) | 3,722-iteration continuation in 1,658.84 s; 5,000 cumulative iterations | Large-grid long-run test; loads remain unconverged |
 | 3D sphere regression | 1.65 | 7,680 polyhedral cells | 2.15 s total process time | Conservation and CPU/CUDA parity check |
 
-On the 21.52M-cell CRM AMR grid, each DP-LUR iteration takes ~0.408 s on an RTX 4090. Building the full octree cut-cell mesh from the closed aircraft surface takes 8 min 52 s from scratch, or 5 min 20 s when refining from a cached parent grid.
+On the 21.52M-cell CRM AMR grid, the five-sweep block-DP-LUR continuation averaged about 0.446 s per outer iteration on an RTX 4090. Over cumulative iterations 4,000--5,000, the iteration-coordinate averages were $C_L/C_D/C_M=0.523661/0.026297/-0.024508$, versus NASA USM3D values of 0.54239/0.02995/-0.06249. These are pseudo-iteration diagnostics rather than physical-time URANS averages, and the last-500 values differ materially; the run therefore remains unconverged. Building the full octree cut-cell mesh from the closed aircraft surface takes 8 min 52 s from scratch, or 5 min 20 s when refining from a cached parent grid.
 
 ## Mesh Representations
 

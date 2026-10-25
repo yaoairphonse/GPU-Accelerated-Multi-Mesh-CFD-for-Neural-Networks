@@ -43,7 +43,25 @@
 14. **Honest result packaging.** Added direct leaf-cell slices, true square
     mesh sections, original-triangle surface Cp, canonical runbooks, status
     labels, and non-destructive cache/release manifests.
+15. **Pressure-only wall probe isolation.** Added a fixed-donor, bounded wall-
+    normal pressure extrapolation behind an opt-in switch.  Uniform-flow and
+    CPU/CUDA tests passed, but a same-checkpoint CRM A/B changed wing Cp RMSE by
+    only 0.018%; it was rejected as the primary accuracy correction.
+16. **Bounded SA face backbone.** Added neighbor-bounded SA convection,
+    positive bounded nonorthogonal diffusion, and a consistent Rusanov/two-
+    point DP-LUR action.  It lowered the 300-update SA residual about 1.77x but
+    left the load trajectory unchanged, so it remains opt-in.
+17. **Procedural mean-flow block DP-LUR.** Added and finite-difference-tested a
+    matrix-free five-variable Euler normal-flux Jacobian action.  CPU/CUDA one-
+    update agreement was 1.87e-16.  On 21.52M controls it improved residuals
+    only 1--2% at 10.4% additional compute cost and did not remove load drift.
+18. **5,000-iteration CRM assessment.** Continued the 1,278-update checkpoint
+    by 3,722 updates.  Global mean/SA residuals reached 6.99e-5/3.28e-4 and
+    wing Cp RMSE reached 0.10034.  The iteration-weighted CL/CD/CM average over
+    cumulative iterations 4,000--5,000 is
+    0.523661/0.026297/-0.024508, but the last-500 average differs materially;
+    no steady or physical-time convergence is claimed.
 
-The remaining numerical milestone is a compatible dissipative SA face
-operator/implicit linearization and long-window convergence before a targeted
-30--40M CRM grid study.
+The remaining numerical milestone is to localize the low-frequency CRM mode
+by face family and shock/sectional-moment tracking, then distinguish pseudo-
+time behavior from physical unsteadiness before a targeted 30--40M grid study.

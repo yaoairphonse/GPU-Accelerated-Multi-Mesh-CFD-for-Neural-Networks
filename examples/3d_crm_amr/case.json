@@ -23,12 +23,18 @@
   },
   "solver": {
     "integrator": "dplur",
-    "CFL": 1.0,
+    "CFL": 4.0,
     "dplur_sweeps": 5,
     "dplur_omega": 0.8,
+    "dplur_block_coupling": true,
     "spatial_order": 2,
     "reconstruction_blend": 0.5,
-    "SA_convection_order": 1
+    "SA_face_scheme": "bounded",
+    "SA_convection_order": 1,
+    "checkpoint_cumulative_iterations": 1278,
+    "continuation_iterations": 3722,
+    "final_cumulative_iterations": 5000,
+    "displayed_load_statistic": "iteration-coordinate trapezoidal average over cumulative iterations 4000 through 5000"
   },
   "status": "geometry and CPU/CUDA audits passed; aerodynamic state unconverged"
 }

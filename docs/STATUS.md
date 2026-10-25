@@ -11,14 +11,20 @@
 | CRM tetra | 10,067,380 cells | CL/CD/CM 0.581806/0.052443/-0.143849 | unconverged |
 | CRM AMR base | 7,661,606 controls | CL/CD/CM 0.335620/0.025291/+0.131069 | unconverged |
 | CRM AMR wall-refined | 14,011,654 controls | CL/CD/CM 0.357993/0.028121/-0.049050 | unconverged |
-| CRM AMR upper-wing L10 | 21,523,036 controls | CL/CD/CM 0.504745/0.026189/-0.102533 | best current, unconverged |
+| CRM AMR upper-wing L10 | 21,523,036 controls | late-1,000 pseudo-iteration average CL/CD/CM 0.523661/0.026297/-0.024508 | 5,000 cumulative updates; unconverged |
 
 NASA CRM USM3D comparison values are CL/CD/CM
-0.54239/0.02995/-0.06249.  Endpoint proximity is not convergence evidence.
+0.54239/0.02995/-0.06249.  The displayed CRM AMR result is a trapezoidal
+average over cumulative iterations 4,000--5,000, not a selected endpoint and
+not a physical-time URANS average.  The last-500 average is
+0.514545/0.025687/-0.012119, so load-window convergence has not been reached.
+The saved endpoint is 0.511187/0.026104/-0.017449 and remains a raw transient
+sample.  Wing Cp RMSE at that saved state is 0.100340.
 
 ## Current blockers
 
-1. SA-dominated low-frequency convergence on CRM.
+1. Low-frequency CRM load/shock motion, especially pitching moment; distinguish
+   slow pseudo-time damping from a numerical or physical unsteady mode.
 2. AMR memory per control before a 30--40M mesh.
 3. Full second-order viscous/SA verification.
 4. Long-window load and pressure/viscous drag convergence.
@@ -26,28 +32,19 @@ NASA CRM USM3D comparison values are CL/CD/CM
 
 ## Next development phase
 
-The next wall-accuracy experiment is an **optional wall-normal probe
-reconstruction**, disabled by default.  The current centroid-gradient wall
-state remains the baseline.  The proposed interface is:
+Three isolated options are now implemented and disabled by default: a
+pressure-only wall-normal probe, a bounded positive/dissipative SA face
+operator, and a matrix-free five-variable Euler neighbor action for procedural
+DP-LUR.  CPU/CUDA and conservation tests pass.  Matched CRM tests rejected the
+pressure probe and block action as stand-alone accuracy fixes; the bounded SA
+operator lowers SA residuals but does not remove the load mode.  Full decision
+records are under `docs/development_history/`.
 
-```text
---wall-state-reconstruction centroid|normal-probe
---wall-probe-scope pressure|thermodynamic|viscous
---wall-probe-blend 0.0..1.0
---wall-probe-distance-1 1.5
---wall-probe-distance-2 2.5
-```
-
-Development will proceed in isolated stages: pressure-only wall flux/load
-feedback with SA unchanged; equation-of-state-consistent pressure-density-
-temperature reconstruction; and only then an experimental viscous/shear
-extension.  Probe data will be frozen during each DP-LUR sweep group and
-updated between outer iterations.  The method must not overwrite the first
-control's conservative state, and it must pass uniform-flow, conservation,
-positivity, CPU/CUDA, restart, and CRM A/B checks before becoming selectable in
-a release.  This is a planned reconstruction option, not an implemented wall
-function.
-
-In parallel, implement and verify a compatible positive/dissipative SA face
-operator and implicit linearization, reduce AMR GPU memory, reconverge the
-21.52M mesh, and then perform targeted 30--40M refinement.
+Before another arbitrary long run, instrument residual and load budgets by
+procedural internal, 2:1 interface, stored cut, wall, and far-field face
+families.  Track upper-wing shock position and sectional moment, then use
+matched lower-CFL/stronger-damping branches to determine whether the observed
+motion is a pseudo-time artifact.  A physical-time URANS average requires a
+fixed physical time step and converged inner iterations; steady pseudo-
+iterations must not be presented as physical-time samples.  Memory reduction
+and a targeted 30--40M refinement remain later work.

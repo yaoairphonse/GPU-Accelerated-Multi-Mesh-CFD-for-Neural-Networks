@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM Bounded SA Face and DP-LUR Evaluation</title>
+  <style>
+    :root { color-scheme: light; --ink:#172233; --muted:#536276; --line:#d7dee8; --wash:#f3f6fa; --blue:#1769aa; --orange:#d95f02; --red:#b3261e; --green:#1f7a4d; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--wash); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(1120px,calc(100% - 32px)); margin:32px auto; padding:clamp(24px,5vw,64px); background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 35px rgba(24,34,49,.08); }
+    h1,h2 { line-height:1.18; } h1 { margin:.15rem 0 .5rem; font-size:clamp(2rem,4vw,3.15rem); } h2 { margin-top:2.2rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+    p,li { max-width:88ch; } .eyebrow { color:var(--muted); font-weight:650; letter-spacing:.08em; text-transform:uppercase; }
+    .decision { margin:28px 0; padding:18px 22px; border-left:6px solid var(--orange); background:#fff8ef; }
+    .decision strong { color:#9b4700; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px; }
+    .card { padding:18px; border:1px solid var(--line); border-radius:10px; background:#fbfcfe; }
+    .card h3 { margin:0 0 8px; }
+    table { width:100%; border-collapse:collapse; margin:18px 0; font-variant-numeric:tabular-nums; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:right; } th:first-child,td:first-child { text-align:left; } th { background:#edf2f7; }
+    .pass { color:var(--green); font-weight:700; } .fail { color:var(--red); font-weight:700; } .neutral { color:#9b4700; font-weight:700; }
+    figure { margin:26px 0; padding:14px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    svg { display:block; width:100%; height:auto; } figcaption { margin:10px 8px 2px; color:var(--muted); font-size:.93rem; }
+    code { padding:.1em .3em; background:#eef2f6; border-radius:4px; } .small { color:var(--muted); font-size:.92rem; }
+    @media print { body{background:#fff} main{width:100%;margin:0;padding:20px;border:0;box-shadow:none} }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Quick CFD development record · 24 October 2026</div>
+  <h1>Bounded SA face operator and matched DP-LUR test</h1>
+  <p class="small">Final disposition: retain as an opt-in research scheme; reject promotion as the current CRM load-accuracy or load-convergence fix.</p>
+
+  <div class="decision">
+    <strong>Decision.</strong> The method improves the SA residual at low cost and is
+    numerically sound enough to keep behind <code>--sa-face-scheme bounded</code>.
+    It does not change the low-frequency CL/CD/CM trajectory, misses the registered
+    2× residual gate, and is therefore not enabled by default. Cancel the proposal
+    that SA face/implicit repair alone is the next remedy for the CRM load error.
+  </div>
+
+  <h2>Why this method was developed</h2>
+  <p>
+    The procedural Cartesian-AMR solver used cell-centered first-order SA convection,
+    a corrected nonorthogonal diffusion gradient, and a scalar DP-LUR approximation
+    based on the acoustic spectral radius. The nonlinear diffusion and implicit
+    two-point coefficient could disagree, and a corrected gradient could be locally
+    anti-diffusive. Earlier tetrahedral-grid experiments had already rejected merely
+    adding relaxation sweeps or swapping one upwind coefficient, so this experiment
+    changed the complete scalar face backbone instead of repeating those tests.
+  </p>
+
+  <h2>Implemented experimental operator</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Convection</h3>
+      <p>Monotone first-order SA transport was selected after a bounded second-order isolation produced a larger operator jump and a worse 150-update residual. Mean-flow convection remains second order.</p>
+    </section>
+    <section class="card">
+      <h3>Diffusion</h3>
+      <p>The high-order normal gradient is blended with a positive two-point gradient. Its ratio to the two-point backbone is bounded to [0.1, 4], guaranteeing non-positive diffusion energy for every nonzero face jump.</p>
+    </section>
+    <section class="card">
+      <h3>Implicit action</h3>
+      <p>DP-LUR uses the same cell-centered Rusanov mass-upwind coefficient for its diagonal and neighbor action, plus the same two-point diffusion backbone. Nonorthogonal correction remains deferred in the nonlinear residual.</p>
+    </section>
+  </div>
+  <p>
+    The original conservative local pseudo-time bound was deliberately retained so
+    the experiment did not obtain an apparent speedup merely by enlarging the time
+    step. The legacy scheme remains the default and reproduced the previous build to
+    roundoff.
+  </p>
+
+  <h2>Verification before the CRM comparison</h2>
+  <ul>
+    <li><span class="pass">Passed:</span> CPU and CUDA builds and both CTests.</li>
+    <li><span class="pass">Passed:</span> analytic limiter and per-face diffusion-dissipation tests, including wrong-sign and excessive nonorthogonal corrections.</li>
+    <li><span class="pass">Passed:</span> 7,661,606-control CPU/CUDA uniform flow; maximum residual was about 4.93×10<sup>-13</sup> and global imbalance below 6.62×10<sup>-14</sup>.</li>
+    <li><span class="pass">Passed:</span> one DP-LUR update agreed between CPU and CUDA to global relative L∞ 1.87×10<sup>-16</sup> and SA relative L∞ 1.80×10<sup>-16</sup>.</li>
+    <li><span class="pass">Passed:</span> no invalid density, pressure, or SA state and no rejected update.</li>
+  </ul>
+
+  <h2>Controlled 21.5-million-control A/B</h2>
+  <p>
+    Both branches restarted the same nonuniform
+    <code>crm_amr_upperwing_l10_stage6_blend050</code> checkpoint and advanced 300
+    updates with CUDA DP-LUR, five sweeps, CFL 4, Mach 0.85, AOA 2.5°, Re<sub>MAC</sub>
+    5 million, and mean-flow reconstruction blend 0.5. Only the SA face and implicit
+    scheme changed.
+  </p>
+  <table>
+    <thead><tr><th>Metric at update 300</th><th>Legacy</th><th>Bounded SA</th><th>Outcome</th></tr></thead>
+    <tbody>
+      <tr><td>Global normalized SA residual</td><td>0.00370970</td><td>0.00210086</td><td>1.766× lower</td></tr>
+      <tr><td>Near-field normalized SA residual</td><td>0.126130</td><td>0.069521</td><td>1.814× lower</td></tr>
+      <tr><td>CD</td><td>0.03086280</td><td>0.03086562</td><td>+0.00000282</td></tr>
+      <tr><td>CL</td><td>0.37668276</td><td>0.37667608</td><td>-0.00000669</td></tr>
+      <tr><td>CM<sub>y</sub></td><td>-0.08566559</td><td>-0.08566607</td><td>-0.00000048</td></tr>
+      <tr><td>Wing Cp RMSE versus NASA</td><td>0.21370271</td><td>0.21370885</td><td>+0.0029%</td></tr>
+      <tr><td>GPU compute time</td><td>120.30 s</td><td>124.19 s</td><td>+3.23%</td></tr>
+    </tbody>
+  </table>
+
+  <table>
+    <thead><tr><th>Registered gate</th><th>Required</th><th>Measured</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Global SA residual improvement</td><td>≥2×</td><td>1.766×</td><td class="fail">Fail</td></tr>
+      <tr><td>Load-drift reduction</td><td>≥50%</td><td>approximately 0%</td><td class="fail">Fail</td></tr>
+      <tr><td>Cp RMSE</td><td>no degradation</td><td>+0.0029%</td><td class="neutral">Numerically neutral</td></tr>
+      <tr><td>CPU/CUDA agreement</td><td>≤1×10<sup>-14</sup></td><td>1.87×10<sup>-16</sup></td><td class="pass">Pass</td></tr>
+      <tr><td>Cost increase</td><td>small</td><td>+3.23%</td><td class="pass">Pass</td></tr>
+    </tbody>
+  </table>
+
+  <figure aria-labelledby="figure-caption">
+    <svg id="diagnostic-figure" viewBox="0 0 1080 405" role="img" aria-label="Legacy and bounded SA residual histories with their aerodynamic load differences"></svg>
+    <figcaption id="figure-caption">
+      Figure 1. Exact 300-update histories. The bounded operator monotonically lowers
+      global and near-field SA residuals, while bounded-minus-legacy CD, CL, and CM
+      differences remain only a few parts in 10<sup>5</sup>. This is why the method is
+      retained as a solver experiment but rejected as the current load-drift fix.
+    </figcaption>
+  </figure>
+
+  <h2>Rejected intermediate paths</h2>
+  <ul>
+    <li>Recomputing a full HLLC mass flux in every DP-LUR sweep produced nearly the same residual history but increased the 150-update process time from 70.7 s to 99.2 s. That code path was removed.</li>
+    <li>Second-order bounded SA convection ended at residual 0.002501 after 150 updates, versus 0.002379 for the first-order isolation. It is not the recommended fast/robust setting.</li>
+    <li>Further tuning of diffusion ratio bounds is not supported as a primary load-accuracy path because the current change already moves SA substantially without moving the load trajectory.</li>
+  </ul>
+
+  <h2>What this result cancels—and what remains</h2>
+  <p>
+    This result cancels promotion of the SA-only correction as the next solution for
+    CL/CD/CM convergence. It does not invalidate the bounded scalar operator: its
+    dissipative property, CPU/CUDA consistency, monotone residual reduction, and
+    low overhead are useful, so it remains opt-in for later combined tests.
+  </p>
+  <p>
+    The next high-value numerical target is the procedural-AMR mean-flow DP-LUR
+    operator. It is still scalar and does not carry the five-variable Euler block
+    coupling already available in the explicit-face tetra/hybrid solver. The nearly
+    identical load histories here show that the remaining low-frequency mode is not
+    controlled by the SA scalar solve alone.
+  </p>
+
+  <h2>Retention</h2>
+  <p>
+    This HTML embeds the complete decision data and figure. Temporary A/B states,
+    79 MiB surface CSV files, histories, NASA-comparison JSON files, and exploratory
+    outputs were deleted after this report and the final verification checks passed.
+    The original shared CRM checkpoint and the successful build directories were not
+    deleted. No production default was changed.
+  </p>
+
+  <script>
+    (() => {
+      const iteration=[0,25,50,75,100,125,150,175,200,225,250,275,300];
+      const legacy={
+        sa:[.0036294793,.0036345497,.0036502037,.0036704106,.0036887815,.0037017975,.0037111426,.0037144821,.0037144623,.0037091379,.0036987536,.0036963845,.0037096969],
+        near:[.125661909,.125205534,.125192949,.125390354,.125554457,.125600023,.125577942,.125407228,.125251862,.125054218,.124859728,.125141175,.126130302],
+        cd:[.0390474703,.0378000360,.0367728223,.0359460547,.0352542055,.0346198567,.0339827678,.0333145026,.0326572055,.0320758390,.0315923760,.0311952621,.0308628007],
+        cl:[.3772802085,.3788105416,.3791333388,.3785797507,.3775205037,.3763429347,.3753009408,.3744848074,.3739944232,.3739151742,.3742873355,.3751658854,.3766827641],
+        cm:[-.1175066855,-.1163754085,-.1121911453,-.1059990726,-.0994909687,-.0941584703,-.0907719240,-.0891326104,-.0884926473,-.0879662208,-.0871082847,-.0861429421,-.0856655917]
+      };
+      const bounded={
+        sa:[.0038917312,.0031088277,.0028888632,.0027391517,.0026065020,.0024874474,.0023788358,.0022893841,.0022218809,.0021752247,.0021464889,.0021248777,.0021008586],
+        near:[.136238725,.106105049,.097731692,.092004469,.087336071,.083128066,.079044681,.075565443,.073014311,.071375547,.070406662,.069822075,.069520872],
+        cd:[.0390474703,.0378008348,.0367734991,.0359473779,.0352558898,.0346219423,.0339853159,.0333174878,.0326605769,.0320794322,.0315959678,.0311986013,.0308656200],
+        cl:[.3772802085,.3788115706,.3791347041,.3785816785,.3775235650,.3763466031,.3753042491,.3744867627,.3739944678,.3739130639,.3742832796,.3751603282,.3766760787],
+        cm:[-.1175066855,-.1163781495,-.1121919846,-.1059983127,-.0994910547,-.0941584618,-.0907697708,-.0891271444,-.0884843624,-.0879571143,-.0871005777,-.0861385405,-.0856660692]
+      };
+      const svg=document.getElementById("diagnostic-figure"),NS="http://www.w3.org/2000/svg";
+      const make=(tag,attrs,text)=>{const n=document.createElementNS(NS,tag);Object.entries(attrs||{}).forEach(([k,v])=>n.setAttribute(k,v));if(text!==undefined)n.textContent=text;svg.appendChild(n);return n;};
+      make("rect",{x:0,y:0,width:1080,height:405,fill:"#fff"});
+      make("text",{x:55,y:27,fill:"#172233","font-size":17,"font-weight":700},"Same-checkpoint SA convergence and load response");
+      const panels=[
+        {title:"Global SA residual",legacy:legacy.sa,bounded:bounded.sa,extent:[.0018,.0041],digits:4},
+        {title:"Near-field SA residual",legacy:legacy.near,bounded:bounded.near,extent:[.06,.145],digits:3},
+        {title:"Load delta (bounded − legacy) ×10⁵",delta:true,extent:[-1,1.3],digits:1}
+      ];
+      panels.forEach((p,index)=>{
+        const ox=55+index*340,oy=58,w=280,h=270,sx=x=>ox+x/300*w,sy=y=>oy+h-(y-p.extent[0])/(p.extent[1]-p.extent[0])*h;
+        make("rect",{x:ox,y:oy,width:w,height:h,fill:"#fbfcfe",stroke:"#d7dee8"});
+        for(let k=0;k<=4;k++){const y=oy+k*h/4,value=p.extent[1]-k*(p.extent[1]-p.extent[0])/4;make("line",{x1:ox,y1:y,x2:ox+w,y2:y,stroke:"#e7ebf0"});make("text",{x:ox-8,y:y+4,"text-anchor":"end",fill:"#536276","font-size":11},value.toFixed(p.digits));}
+        [0,100,200,300].forEach(x=>make("text",{x:sx(x),y:oy+h+19,"text-anchor":"middle",fill:"#536276","font-size":11},x));
+        make("text",{x:ox+w/2,y:oy-12,"text-anchor":"middle",fill:"#172233","font-size":14,"font-weight":700},p.title);
+        if(!p.delta){[[p.legacy,"#1769aa"],[p.bounded,"#d95f02"]].forEach(([values,color])=>{make("polyline",{points:iteration.map((x,i)=>`${sx(x)},${sy(values[i])}`).join(" "),fill:"none",stroke:color,"stroke-width":3,"stroke-linejoin":"round"});});}
+        else {
+          make("line",{x1:ox,y1:sy(0),x2:ox+w,y2:sy(0),stroke:"#8794a6","stroke-dasharray":"5 4"});
+          [["cd","#1769aa"],["cl","#d95f02"],["cm","#1f7a4d"]].forEach(([key,color])=>{const values=iteration.map((_,i)=>(bounded[key][i]-legacy[key][i])*1e5);make("polyline",{points:iteration.map((x,i)=>`${sx(x)},${sy(values[i])}`).join(" "),fill:"none",stroke:color,"stroke-width":2.5,"stroke-linejoin":"round"});});
+        }
+      });
+      [["Legacy SA","#1769aa"],["Bounded SA","#d95f02"],["CM delta","#1f7a4d"]].forEach(([label,color],i)=>{const x=315+i*190;make("line",{x1:x,y1:374,x2:x+32,y2:374,stroke:color,"stroke-width":3});make("text",{x:x+40,y:379,fill:"#172233","font-size":13},label);});
+    })();
+  </script>
+</main>
+</body>
+</html>
