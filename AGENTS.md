@@ -25,8 +25,9 @@ Read these files before taking action:
 
 1. `README.md` for the project status and solver matrix;
 2. `docs/SIMPLE_AIRFOIL_INTERFACE.md` for the locked 2-D interface;
-3. the matching `examples/<case>/RUNBOOK.md` before running a case;
-4. `docs/STATUS.md` before making accuracy or validation claims.
+3. `docs/CASE_BUILDER.md` when using a generated case manifest;
+4. the matching `examples/<case>/RUNBOOK.md` before running a case;
+5. `docs/STATUS.md` before making accuracy or validation claims.
 
 Use `examples/README.md` to determine whether a case is self-contained. A
 plotted showcase is evidence of an earlier run, not proof that its large input
@@ -70,6 +71,15 @@ python3 simple_airfoil.py \
 `simple_airfoil.py` does not compile the executable. Build first, or set
 `QUICK_CFD_EXECUTABLE` to an already-built `quick_airfoil` binary. Always use
 a new output directory rather than overwriting a prior run.
+
+For a configurable human-facing setup, open `tools/cfd_case_builder.html`.
+Its `quick_cfd_case_manifest_v1` download is also the preferred machine-
+readable handoff between agents. Validate it against
+`tools/case_manifest.schema.json`, read its `limitations`, and use `run.argv`
+rather than reparsing the displayed shell command. The generated manifest is
+an intended operation, not evidence that a mesh exists or a solution is
+converged. If `native_configuration` is not null, write it verbatim to the
+case filename referenced by `--config` in `run.argv` before launching.
 
 The primary machine-readable answer is:
 

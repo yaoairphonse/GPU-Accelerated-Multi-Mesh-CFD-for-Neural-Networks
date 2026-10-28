@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quick CFD Case Builder</title>
+<style>
+:root{--ink:#172b3a;--muted:#5f7280;--paper:#fff;--bg:#eef3f5;--line:#cfdae0;--blue:#146c94;--green:#087c68;--warn:#8b4b00;--soft:#e8f3f7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:linear-gradient(120deg,#123d56,#087c68);color:#fff;padding:32px max(22px,calc((100vw - 1240px)/2))}header h1{margin:0 0 6px;font-size:clamp(25px,4vw,38px)}header p{max-width:900px;margin:0;opacity:.9}
+main{max-width:1240px;margin:24px auto;padding:0 18px 50px;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:20px}.card{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:20px;margin-bottom:17px;box-shadow:0 5px 18px #16384b0b}.card h2{font-size:18px;margin:0 0 14px;color:var(--blue)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 16px}.wide{grid-column:1/-1}label{display:block;font-weight:650;font-size:13px}label span{display:block;color:var(--muted);font-weight:400;margin-top:3px}input,select,button,textarea{font:inherit}input,select{width:100%;margin-top:5px;padding:9px 10px;border:1px solid #aebdc6;border-radius:7px;background:#fff;color:var(--ink)}input:disabled,select:disabled{background:#edf1f3;color:#64747e}.check{display:flex;gap:8px;align-items:center;padding-top:24px}.check input{width:auto;margin:0}.check label{font-weight:500}.hidden{display:none!important}.status{background:var(--soft);border-left:4px solid var(--blue);padding:11px 13px;border-radius:6px}.warning{background:#fff4de;border-left-color:#d47a00;color:#613c09}.buttons{display:flex;flex-wrap:wrap;gap:9px}.buttons button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;background:var(--blue);color:#fff;font-weight:650}.buttons button.secondary{background:#526a78}.buttons button:disabled{opacity:.45;cursor:not-allowed}details{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:12px}summary{cursor:pointer;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#10232f;color:#e8f4f7;padding:15px;border-radius:8px;max-height:440px;overflow:auto;font:12.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}.preview h3{font-size:15px;margin:16px 0 7px}.pill{display:inline-block;padding:3px 8px;border-radius:20px;background:#dff1ec;color:#075f51;font-weight:700;font-size:12px;margin-right:5px}.small{color:var(--muted);font-size:13px}.sticky{position:sticky;top:12px}.process{margin:0;padding-left:23px}.process li{padding:4px 0}.footer-note{margin-top:15px;color:var(--muted);font-size:12px}@media(max-width:900px){main{grid-template-columns:1fr}.sticky{position:static}}@media(max-width:620px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Quick CFD Case Builder</h1>
+  <p>Offline input and command generator for the verified 2-D/3-D solver paths. It creates files and process instructions; it does not run CFD in the browser.</p>
+</header>
+<main>
+<form id="builder" autocomplete="off">
+  <section class="card">
+    <h2>1. Solver route</h2>
+    <div class="grid">
+      <label class="wide">Solver path
+        <select id="solverPath">
+          <option value="airfoil2d">2-D native Cartesian/quadtree AMR airfoil</option>
+          <option value="amr3d">3-D native procedural octree-AMR cut cell</option>
+          <option value="unstructured3d">3-D external tetra/hybrid/polyhedral mesh</option>
+        </select>
+        <span>This explicit choice replaces an ambiguous automatic 2-D/3-D detector.</span>
+      </label>
+      <label>Case name<input id="caseName" value="naca4412_lf1" pattern="[A-Za-z0-9_.-]+"><span>Used in downloaded filenames and the manifest.</span></label>
+      <label>Output directory<input id="outputDir" value="output/naca4412_lf1"></label>
+      <label>Backend<select id="backend"><option value="cpu">CPU / OpenMP</option><option value="cuda">CUDA GPU</option></select></label>
+      <label id="cudaArchWrap" class="hidden">CUDA architecture<input id="cudaArch" value="89"><span>89 is RTX 4090. Change it for another GPU.</span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. Mesh input</h2>
+    <div class="grid mode mode-airfoil2d">
+      <label class="wide">Airfoil geometry CSV<input id="geometryPath" value="examples/2d_naca4412/geometry.csv"><span>Header must be x,y or ordered x,y,patch.</span></label>
+      <label>Geometry format<select id="geometryFormat"><option value="polygon">Ordered polygon (x,y,patch)</option><option value="gxxx">GXXX paired points (x,y)</option></select></label>
+      <label>AMR fidelity / nominal controls<select id="meshPreset"><option value="LF1">LF1 — nominal 4,700</option><option value="LF2">LF2 — nominal 9,500</option></select><span>Actual controls depend on geometry.</span></label>
+      <label>Protective maximum cells<input id="maxCells2d" type="number" min="100" max="20000000" step="1000" value="2000000"><span>This is a cap, not a target count.</span></label>
+    </div>
+    <div class="grid mode mode-amr3d hidden">
+      <label class="wide">Packed QCFDAM1 mesh directory<input id="amrMeshPath" value="output/3d_crm_amr/upperwing_l10/packed"><span>The browser does not build the octree. See the CRM AMR runbook for surface-to-mesh processing.</span></label>
+      <label>Expected controls (metadata only)<input id="amrExpectedCells" type="number" min="1" value="21523036"></label>
+      <label>Mesh provenance<input id="amrProvenance" value="closed surface -> procedural octree -> cut cells -> agglomerated controls"></label>
+    </div>
+    <div class="grid mode mode-unstructured3d hidden">
+      <label class="wide">Prepared mesh file<input id="externalMeshPath" value="output/3d_crm_tetra/mesh/mesh.bin"><span>QCFD3D1 mesh.bin or supported explicit-face mesh.txt; raw CGNS/NPZ requires conversion first.</span></label>
+      <label>Gradient<select id="gradient"><option value="legacy">Legacy cell Green–Gauss</option><option value="node">Node/adaptive pseudo-Laplacian</option></select></label>
+      <label>Expected controls (metadata only)<input id="externalExpectedCells" type="number" min="1" value="10067380"></label>
+      <label class="node-only hidden">Connectivity file<input id="connectivityPath" value="output/3d_crm_tetra/mesh/connectivity.bin"></label>
+      <label class="node-only hidden">Node-gradient table<input id="nodeGradientPath" value="output/3d_crm_tetra/mesh/node_gradient.bin"></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3. Freestream and physical model</h2>
+    <div class="grid">
+      <label>Mach<input id="mach" type="number" min="0.001" step="0.01" value="0.2"></label>
+      <label>Angle of attack (degrees)<input id="aoa" type="number" step="0.1" value="1.5"></label>
+      <label class="mode mode-airfoil2d">Static pressure, Pa<input id="pressure" type="number" min="1" step="1" value="101325"></label>
+      <label class="mode mode-airfoil2d">Static temperature, K<input id="temperature" type="number" min="1" step="0.1" value="288.15"></label>
+      <label class="mode mode-airfoil2d">Chord, m<input id="chord" type="number" min="0.000001" step="0.1" value="1"></label>
+      <label class="mode mode-airfoil2d">Flow model<select id="turbulence2d"><option value="sa-neg">RANS: SA-neg</option><option value="none">Laminar: no eddy viscosity</option></select><span>The current native 2-D interface does not expose inviscid Euler mode.</span></label>
+      <label class="mode mode-airfoil2d">Molecular viscosity<select id="viscosity2d"><option value="sutherland">Sutherland</option><option value="constant">Constant at freestream</option></select></label>
+      <label class="mode mode-airfoil2d">SA implementation<select id="saLayout2d"><option value="fused">Fused</option><option value="reference">Reference</option></select></label>
+      <label class="mode mode-3d hidden">Reynolds number<input id="reynolds3d" type="number" min="1" step="1000" value="5000000"></label>
+      <label class="mode mode-3d hidden">Nondimensional mu-star<input id="muStar3d" type="number" min="0" step="0.00000001" value="0.00000017"><span>Leave physically consistent with the selected Reynolds/reference convention.</span></label>
+      <div class="mode mode-3d hidden status wide"><strong>3-D model:</strong> the current production paths use the six-variable mechanical-viscous SA-neg formulation. The UI does not invent an unsupported turbulence switch.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>4. Discretization and iteration</h2>
+    <div class="grid">
+      <label>Time marcher<select id="integrator"><option value="dplur">DP-LUR — implicit pseudo-time</option><option value="rk3">RK3 — explicit</option></select></label>
+      <label>Implicit status<input id="implicitStatus" value="Implicit (DP-LUR)" disabled></label>
+      <label>Mean-flow spatial order<select id="spatialOrder"><option value="2">Limited second order</option><option value="1">First order</option></select></label>
+      <label class="mode mode-airfoil2d">Convective flux<select id="flux2d"><option value="hllc">HLLC</option><option value="ausm">AUSM+-up baseline</option></select></label>
+      <label class="mode mode-airfoil2d">Low-Mach preconditioning<select id="preconditioning2d"><option value="turkel">Turkel</option><option value="none">None</option></select></label>
+      <label class="mode mode-airfoil2d">RK3 local pseudo-time<select id="localPseudo2d"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+      <label>Initial CFL<input id="cfl" type="number" min="0.000001" step="0.05" value="4"></label>
+      <label class="mode mode-unstructured3d hidden">Maximum CFL<input id="cflMax3d" type="number" min="0.000001" step="0.05" value="4"><span>Set equal to initial CFL for fixed-CFL operation.</span></label>
+      <label class="mode mode-unstructured3d hidden">Controller start iteration<input id="controllerStart3d" type="number" min="0" step="50" value="500"></label>
+      <label class="mode mode-airfoil2d rk3-only hidden">RK3 stop time t*<input id="stopTime2d" type="number" min="0.01" step="10" value="150"><span>2-D RK3 has no direct maximum-iteration input.</span></label>
+      <label class="mode mode-airfoil2d rk3-only hidden">Adaptive CFL<select id="adaptiveCfl2d"><option value="false">Disabled</option><option value="true">Enabled</option></select></label>
+      <label class="mode mode-airfoil2d rk3-only hidden">Convergence check period t*<input id="checkPeriodStar2d" type="number" min="0.02" step="0.1" value="0.5"></label>
+      <label class="iteration-limit">Maximum iterations<input id="iterations" type="number" min="0" step="100" value="5000"></label>
+      <label class="iteration-limit">Report/check interval (iterations)<input id="checkPeriod" type="number" min="1" step="10" value="100"></label>
+      <label>Wall-clock budget, seconds<input id="budget" type="number" min="2" step="5" value="60"></label>
+      <label class="dplur-only">DP-LUR sweeps<input id="dplurSweeps" type="number" min="1" max="50" value="5"></label>
+      <label class="dplur-only">DP-LUR relaxation omega<input id="dplurOmega" type="number" min="0.01" max="1" step="0.05" value="0.8"></label>
+      <label class="dplur-only">Euler block coupling<select id="dplurBlock"><option value="true">Enabled</option><option value="false">Scalar spectral backbone</option></select></label>
+      <label class="mode mode-3d hidden">Reconstruction blend<input id="reconstructionBlend3d" type="number" min="0" max="1" step="0.1" value="0.5"></label>
+      <label class="mode mode-amr3d hidden">SA face scheme<select id="saFaceScheme3d"><option value="bounded">Bounded face operator</option><option value="legacy">Legacy</option></select></label>
+      <label class="mode mode-unstructured3d hidden">SA convection order<select id="saOrder3d"><option value="1">First order</option><option value="2">Second-order prototype</option></select></label>
+      <label class="mode mode-unstructured3d hidden">SA diffusion blend<input id="saDiffusionBlend3d" type="number" min="0" max="1" step="0.1" value="1"></label>
+    </div>
+    <details>
+      <summary>Reference loads and output controls (3-D)</summary>
+      <div class="grid" style="margin-top:12px">
+        <label>Reference area<input id="referenceArea3d" type="number" min="0.000001" step="0.1" value="7.818510433883157"></label>
+        <label>Moment reference x<input id="momentX3d" type="number" step="0.1" value="4.807469180565627"></label>
+        <label>Moment reference y<input id="momentY3d" type="number" step="0.1" value="0"></label>
+        <label>Moment reference z<input id="momentZ3d" type="number" step="0.1" value="0.6451776649746193"></label>
+        <div class="check"><input id="faceAudit3d" type="checkbox"><label for="faceAudit3d">Write residual/load audit</label></div>
+        <div class="check"><input id="writeState3d" type="checkbox" checked><label for="writeState3d">Write restart state</label></div>
+        <div class="check"><input id="writeSurface3d" type="checkbox" checked><label for="writeSurface3d">Write surface output</label></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>5. Initialization</h2>
+    <div class="grid">
+      <label>Initial state<select id="initialization"><option value="uniform">Uniform freestream</option><option value="restart">Restart checkpoint</option></select><span>Native 2-D currently uses uniform initialization through this driver.</span></label>
+      <label id="restartWrap" class="hidden">Restart state path<input id="restartPath" value="output/previous/state.bin"><span>Always use a different output directory from the checkpoint directory.</span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>6. Generate files</h2>
+    <div id="validation" class="status">Ready.</div>
+    <div class="buttons" style="margin-top:13px">
+      <button type="button" id="refresh">Update preview</button>
+      <button type="button" id="downloadManifest">Download agent manifest</button>
+      <button type="button" id="downloadConfig">Download native 2-D case JSON</button>
+      <button type="button" id="downloadScript">Download run script</button>
+      <button type="button" class="secondary" id="reset">Restore defaults</button>
+    </div>
+    <p class="footer-note">The Python/C++ executable remains the authoritative validator. This page validates common combinations and records limitations but does not claim that a generated case is physically appropriate.</p>
+  </section>
+</form>
+
+<aside class="preview">
+  <div class="sticky">
+    <section class="card">
+      <h2>Generated operation</h2>
+      <div id="badges"></div>
+      <h3>Warnings and limitations</h3><div id="warnings" class="status warning"></div>
+      <h3>Program process</h3><ol id="process" class="process"></ol>
+      <h3>Run command</h3><pre id="commandPreview"></pre>
+      <details><summary>Agent-readable manifest</summary><pre id="manifestPreview"></pre></details>
+      <details id="configDetails"><summary>Native 2-D configuration patch</summary><pre id="configPreview"></pre></details>
+    </section>
+  </div>
+</aside>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const number=id=>Number($(id).value);
+const bool=id=>$(id).value==="true";
+const checked=id=>$(id).checked;
+const shellQuote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
+const shellJoin=argv=>argv.map(shellQuote).join(" ");
+const safeName=value=>(value.trim().replace(/[^A-Za-z0-9_.-]+/g,"_")||"quick_cfd_case");
+const download=(name,text,type)=>{const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),0)};
+const show=(selector,visible)=>document.querySelectorAll(selector).forEach(node=>node.classList.toggle("hidden",!visible));
+let lastRoute="";
+
+function native2dConfig(){
+  const integrator=$("integrator").value,cfl=number("cfl"),dplur=integrator==="dplur";
+  return {
+    freestream:{Mach:number("mach"),AOA_degrees:number("aoa"),p_Pa:number("pressure"),T_K:number("temperature"),chord_m:number("chord")},
+    physics:{turbulence:$("turbulence2d").value,viscosity:$("viscosity2d").value},
+    solver:{
+      integrator,backend:$("backend").value,spatial_order:number("spatialOrder"),flux:$("flux2d").value,
+      preconditioning:$("preconditioning2d").value,mach_floor:.02,mode:"steady",
+      local_pseudo_time:dplur?false:bool("localPseudo2d"),
+      adaptive_cfl:{enabled:dplur?false:bool("adaptiveCfl2d"),minimum:Math.min(.03,dplur ? .03 : cfl),maximum:Math.max(.45,dplur ? .45 : cfl),growth:1.1,shrink:.5},
+      CFL:dplur ? .15 : cfl,viscous_CFL:.1,SA_CFL:.1,time_step:{mode:"cfl",dt_seconds:null},
+      stop_time_star:number("stopTime2d"),budget_seconds:number("budget"),sa_layout:$("saLayout2d").value,
+      dplur:{CFL:cfl,sweeps:number("dplurSweeps"),omega:number("dplurOmega"),block_coupling:bool("dplurBlock"),maximum_iterations:number("iterations"),check_interval:number("checkPeriod")},
+      convergence:{metric:"cl_cm_cp",raw_tolerance:.01,coefficient_change:.005,cp_change:.005,hold:5,min_time_star:3,check_period_star:number("checkPeriodStar2d"),residual_region_xy_c:[-1,3,-1,1]}
+    },
+    mesh:{method:"cartesian_amr_2d",max_cells:number("maxCells2d")},
+    output:{formats:["npz"],surface:true,loads:true,volume:true,audit_budgets:false}
+  };
+}
+
+function buildCommands(path,backend){
+  const dir=backend==="cpu"?"build_cpu":"build",cuda=backend==="cuda";
+  const configure=["cmake","-S",".","-B",dir,"-DCMAKE_BUILD_TYPE=Release","-DCFD_CUDA="+(cuda?"ON":"OFF")];
+  if(cuda)configure.push("-DCMAKE_CUDA_ARCHITECTURES="+$("cudaArch").value.trim());else configure.push("-DCFD_OPENMP=ON");
+  const target=path==="airfoil2d"?"quick_airfoil":path==="amr3d"?"amr3d":"sphere3d";
+  return {directory:dir,commands:[shellJoin(configure),shellJoin(["cmake","--build",dir,"-j","8","--target",target]),shellJoin(["ctest","--test-dir",dir,"--output-on-failure"])]};
+}
+
+function generate(){
+  const path=$("solverPath").value,name=safeName($("caseName").value),integrator=$("integrator").value;
+  const backend=$("backend").value,implicit=integrator==="dplur",build=buildCommands(path,backend),warnings=[];
+  const initialization=path==="airfoil2d"?"uniform":$("initialization").value;
+  const common={Mach:number("mach"),AOA_degrees:number("aoa")};
+  let mesh,physics,numerics,termination,argv,nativeConfig=null,entryPoint,expectedOutputs,process=[];
+  if(path==="airfoil2d"){
+    nativeConfig=native2dConfig();entryPoint="quick_cfd.py -> quick_airfoil";
+    mesh={type:"native_cartesian_quadtree_amr_cut_cell",geometry_path:$("geometryPath").value.trim(),geometry_format:$("geometryFormat").value,preset:$("meshPreset").value,nominal_controls:$("meshPreset").value==="LF1"?4700:9500,maximum_cells_cap:number("maxCells2d"),count_is_target:false};
+    physics={model:$("turbulence2d").value==="sa-neg"?"RANS_SA_neg":"laminar_viscous",turbulence:$("turbulence2d").value,viscosity:$("viscosity2d").value,freestream:{...common,pressure_Pa:number("pressure"),temperature_K:number("temperature"),chord_m:number("chord")}};
+    numerics={integrator,implicit,backend,spatial_order:number("spatialOrder"),convective_flux:$("flux2d").value,low_mach_preconditioning:$("preconditioning2d").value,CFL:number("cfl"),local_pseudo_time:implicit?true:bool("localPseudo2d"),adaptive_CFL:implicit?false:bool("adaptiveCfl2d"),dplur:implicit?nativeConfig.solver.dplur:null};
+    termination=implicit?{maximum_iterations:number("iterations"),check_interval:number("checkPeriod"),wall_clock_budget_seconds:number("budget"),convergence_gate:"raw residual plus stable CL/CM/Cp"}:{maximum_iterations:null,stop_time_star:number("stopTime2d"),check_period_star:number("checkPeriodStar2d"),wall_clock_budget_seconds:number("budget"),convergence_gate:"raw residual plus stable CL/CM/Cp",note:"The current 2-D RK3 driver does not expose a direct maximum-iteration limit."};
+    const configName=name+".case.json";
+    argv=["python3","quick_cfd.py","run","--points",mesh.geometry_path,"--point-format",mesh.geometry_format,"--config",configName,"--out",$("outputDir").value.trim(),"--levels",mesh.preset,"--backend",backend,"--executable",build.directory+"/quick_airfoil"];
+    expectedOutputs=["simple/pipeline-level result metadata","pipeline.json","config.resolved.json","per-level result.json","surface and load outputs","HTML result index"];
+    process=[
+      {order:1,action:"Install Python requirements",command:"python3 -m pip install -r requirements.txt"},
+      {order:2,action:"Configure and build the native 2-D solver",command:build.commands.slice(0,2).join("\n")},
+      {order:3,action:"Run CTest",command:build.commands[2]},
+      {order:4,action:"Place the downloaded native configuration in the repository root",command:null},
+      {order:5,action:"Run one native AMR fidelity",command:shellJoin(argv)},
+      {order:6,action:"Inspect convergence, positivity, CL/CM/Cp history, and outputs",command:null}
+    ];
+    warnings.push("Actual 2-D control count is geometry-dependent; the selected count is a fidelity preset, not an exact target.");
+    if(!implicit)warnings.push("2-D RK3 terminates through convergence, nondimensional stop time, or wall-clock budget; it has no direct maximum-iteration input.");
+    if(implicit&&mesh.preset==="LF2"&&number("cfl")>1)warnings.push("The retained LF2 DP-LUR preset uses CFL 1; higher values previously produced residual oscillation and require a new stability check.");
+    warnings.push("Rapid cut-cell drag is exported but is not yet an aerodynamic validation claim.");
+  }else if(path==="amr3d"){
+    entryPoint="amr3d";mesh={type:"native_procedural_octree_AMR_cut_cell",packed_mesh_directory:$("amrMeshPath").value.trim(),expected_controls:number("amrExpectedCells"),provenance:$("amrProvenance").value.trim(),count_is_target:false};
+    physics={model:"RANS_SA_neg_mechanical_viscous",turbulence:"sa-neg",freestream:{...common,Reynolds:number("reynolds3d"),mu_star:number("muStar3d")}};
+    numerics={integrator,implicit,backend,spatial_order:number("spatialOrder"),reconstruction_blend:number("reconstructionBlend3d"),CFL:number("cfl"),CFL_program:"fixed per run; stage CFL/reconstruction through separate restart directories",SA_face_scheme:$("saFaceScheme3d").value,dplur:implicit?{sweeps:number("dplurSweeps"),omega:number("dplurOmega"),block_coupling:bool("dplurBlock")}:null};
+    termination={maximum_iterations:number("iterations"),check_interval:number("checkPeriod"),wall_clock_budget_seconds:number("budget"),fixed_point_convergence_automatic:false};
+    argv=[build.directory+"/solvers/3d/amr3d","--mesh",mesh.packed_mesh_directory,"--out",$("outputDir").value.trim(),"--backend",backend,"--integrator",integrator,"--mach",String(common.Mach),"--aoa",String(common.AOA_degrees),"--re",String(physics.freestream.Reynolds),"--mu-star",String(physics.freestream.mu_star),"--reference-area",String(number("referenceArea3d")),"--moment-x",String(number("momentX3d")),"--moment-y",String(number("momentY3d")),"--moment-z",String(number("momentZ3d")),"--cfl",String(number("cfl")),"--spatial-order",String(number("spatialOrder")),"--reconstruction-blend",String(number("reconstructionBlend3d")),"--sa-face-scheme",$("saFaceScheme3d").value,"--iterations",String(number("iterations")),"--check-period",String(number("checkPeriod")),"--budget",String(number("budget")),"--face-budget-audit",checked("faceAudit3d")?"1":"0","--write-state",checked("writeState3d")?"1":"0","--write-surface",checked("writeSurface3d")?"1":"0"];
+    if(implicit)argv.push("--dplur-sweeps",String(number("dplurSweeps")),"--dplur-omega",String(number("dplurOmega")),"--dplur-block-coupling",bool("dplurBlock")?"1":"0");
+    if(initialization==="restart")argv.push("--restart",$("restartPath").value.trim());
+    expectedOutputs=["history.csv","result.json","method.json"].concat(checked("writeState3d")?["state.bin"]:[],checked("writeSurface3d")?["surface.csv"]:[]);
+    process=[
+      {order:1,action:"Confirm that the packed QCFDAM1 directory exists and matches its manifest",command:null},
+      {order:2,action:"Configure, build, and test amr3d",command:build.commands.join("\n")},
+      {order:3,action:initialization==="restart"?"Validate restart cell ordering and preserve the source checkpoint":"Initialize every control from uniform freestream",command:null},
+      {order:4,action:"Run in a new output directory",command:shellJoin(argv)},
+      {order:5,action:"Inspect geometry/face audits, residuals, load history, positivity, and checkpoint provenance",command:null}
+    ];
+    warnings.push("This input expects an already packed procedural AMR mesh; surface-to-octree generation is a separate runbook process.");
+    warnings.push("AMR CFL and reconstruction changes should be staged through new restart directories, not changed aggressively in one cold start.");
+  }else{
+    entryPoint="sphere3d";const gradient=$("gradient").value;
+    mesh={type:"external_explicit_face_unstructured",prepared_mesh_file:$("externalMeshPath").value.trim(),gradient,connectivity_file:gradient==="node"?$("connectivityPath").value.trim():null,node_gradient_file:gradient==="node"?$("nodeGradientPath").value.trim():null,expected_controls:number("externalExpectedCells"),count_is_target:false};
+    physics={model:"RANS_SA_neg_mechanical_viscous",turbulence:"sa-neg",freestream:{...common,Reynolds:number("reynolds3d"),mu_star:number("muStar3d")}};
+    numerics={integrator,implicit,backend,spatial_order:number("spatialOrder"),reconstruction_blend:number("reconstructionBlend3d"),CFL:number("cfl"),CFL_max:number("cflMax3d"),controller_start_iteration:number("controllerStart3d"),SA_convection_order:number("saOrder3d"),SA_diffusion_blend:number("saDiffusionBlend3d"),dplur:implicit?{sweeps:number("dplurSweeps"),omega:number("dplurOmega"),block_coupling:bool("dplurBlock")}:null};
+    termination={maximum_iterations:number("iterations"),check_interval:number("checkPeriod"),wall_clock_budget_seconds:number("budget"),residual_tolerance:1e-4};
+    argv=[build.directory+"/solvers/3d/sphere3d","--mesh",mesh.prepared_mesh_file,"--out",$("outputDir").value.trim(),"--backend",backend,"--integrator",integrator,"--gradient",gradient,"--mach",String(common.Mach),"--aoa",String(common.AOA_degrees),"--re",String(physics.freestream.Reynolds),"--mu-star",String(physics.freestream.mu_star),"--reference-area",String(number("referenceArea3d")),"--moment-x",String(number("momentX3d")),"--moment-y",String(number("momentY3d")),"--moment-z",String(number("momentZ3d")),"--cfl",String(number("cfl")),"--cfl-max",String(number("cflMax3d")),"--controller-start-iteration",String(number("controllerStart3d")),"--spatial-order",String(number("spatialOrder")),"--reconstruction-blend",String(number("reconstructionBlend3d")),"--sa-spatial-order",String(number("saOrder3d")),"--sa-diffusion-blend",String(number("saDiffusionBlend3d")),"--iterations",String(number("iterations")),"--check-period",String(number("checkPeriod")),"--budget",String(number("budget")),"--tolerance","0.0001","--binary-output","1","--residual-audit",checked("faceAudit3d")?"1":"0"];
+    if(gradient==="node")argv.push("--connectivity",mesh.connectivity_file,"--node-gradient",mesh.node_gradient_file);
+    if(implicit)argv.push("--dplur-sweeps",String(number("dplurSweeps")),"--dplur-omega",String(number("dplurOmega")),"--dplur-block-coupling",bool("dplurBlock")?"1":"0");
+    if(initialization==="restart")argv.push("--restart",$("restartPath").value.trim());
+    expectedOutputs=["history.csv","result.json","method metadata","state.bin","surface.csv"];
+    process=[
+      {order:1,action:"Convert raw CGNS/NPZ data first if the selected file is not a prepared QCFD3D1/explicit-face mesh",command:null},
+      {order:2,action:"Configure, build, and test sphere3d",command:build.commands.join("\n")},
+      {order:3,action:initialization==="restart"?"Validate exact mesh ordering and preserve the source checkpoint":"Initialize every cell from uniform freestream",command:null},
+      {order:4,action:"Run in a new output directory",command:shellJoin(argv)},
+      {order:5,action:"Inspect residuals, conservation audit, positivity, load history, and restart metadata",command:null}
+    ];
+    warnings.push("Raw CGNS, STL, or archived NPZ is not accepted directly by sphere3d; use the case-specific converter first.");
+    if(gradient==="node")warnings.push("Node gradient requires mesh.bin, connectivity.bin, and node_gradient.bin from the same converted mesh ordering.");
+  }
+  if(backend==="cuda")warnings.push("Verify nvidia-smi and use the CUDA architecture matching the actual GPU; the default 89 is specific to RTX 4090.");
+  if(number("spatialOrder")===2&&initialization==="uniform"&&path!=="airfoil2d")warnings.push("A cold 3-D second-order start can be unstable; consider staged first-order and reconstruction-blend restart steps.");
+  const manifest={
+    manifest_schema:"tools/case_manifest.schema.json",schema_version:"quick_cfd_case_manifest_v1",generator:"tools/cfd_case_builder.html",generated_utc:new Date().toISOString(),
+    case:{name,solver_path:path,dimension:path==="airfoil2d"?2:3,entry_point:entryPoint},paths:{repository_root:".",output_directory:$("outputDir").value.trim()},
+    mesh,physics,numerics,initialization:{mode:initialization,restart_path:initialization==="restart"?$("restartPath").value.trim():null},termination,
+    build,run:{argv,shell_command:shellJoin(argv),expected_outputs:expectedOutputs},native_configuration:nativeConfig,process,limitations:warnings
+  };
+  return {manifest,nativeConfig,warnings,process,command:shellJoin(argv),name,implicit,path};
+}
+
+function validate(generated){
+  const errors=[],m=generated.manifest;
+  if(!Number.isFinite(m.physics.freestream.Mach)||m.physics.freestream.Mach<=0)errors.push("Mach must be positive.");
+  if(!m.paths.output_directory)errors.push("Output directory is required.");
+  if(!Number.isInteger(m.termination.maximum_iterations)&&m.termination.maximum_iterations!==null)errors.push("Maximum iterations must be an integer.");
+  if(m.case.solver_path==="airfoil2d"&&!m.mesh.geometry_path)errors.push("Airfoil geometry path is required.");
+  if(m.case.solver_path==="amr3d"&&!m.mesh.packed_mesh_directory)errors.push("Packed AMR mesh directory is required.");
+  if(m.case.solver_path==="unstructured3d"&&!m.mesh.prepared_mesh_file)errors.push("Prepared external mesh path is required.");
+  if(m.numerics.integrator==="rk3"&&m.case.solver_path==="airfoil2d"&&m.numerics.CFL>.5)errors.push("2-D RK3 CFL must be <= 0.5.");
+  if(m.numerics.integrator==="rk3"&&m.case.solver_path==="unstructured3d"&&m.numerics.CFL_max>.45)errors.push("Unstructured 3-D RK3 cfl-max must be <= 0.45.");
+  if(m.numerics.CFL<=0)errors.push("CFL must be positive.");
+  return errors;
+}
+
+function updateVisibility(){
+  const path=$("solverPath").value,integrator=$("integrator").value,is2d=path==="airfoil2d",implicit=integrator==="dplur";
+  const route=path+"|"+integrator;
+  if(route!==lastRoute){
+    if(integrator==="rk3"){
+      $("cfl").value=path==="amr3d"?"0.05":"0.15";
+      if(path==="unstructured3d")$("cflMax3d").value="0.4";
+    }else{
+      $("cfl").value=path==="airfoil2d"?"4":"1";
+      if(path==="unstructured3d")$("cflMax3d").value="4";
+    }
+    lastRoute=route;
+  }
+  show(".mode",false);show(".mode-"+path,true);show(".mode-3d",!is2d);show(".dplur-only",implicit);show(".rk3-only",!implicit&&is2d);show(".iteration-limit",!(is2d&&!implicit));
+  show(".node-only",path==="unstructured3d"&&$("gradient").value==="node");
+  $("implicitStatus").value=implicit?"Implicit pseudo-time (DP-LUR)":"Explicit (three-stage RK3)";
+  if(is2d&&implicit){$("backend").value="cpu";$("backend").disabled=true;$("initialization").value="uniform";$("initialization").disabled=true}
+  else{$("backend").disabled=false;$("initialization").disabled=is2d;if(is2d)$("initialization").value="uniform"}
+  show("#restartWrap",!is2d&&$("initialization").value==="restart");
+  show("#cudaArchWrap",$("backend").value==="cuda");
+  $("downloadConfig").disabled=!is2d;
+}
+
+function render(){
+  updateVisibility();const generated=generate(),errors=validate(generated),m=generated.manifest;
+  $("validation").textContent=errors.length?errors.join(" "):"Configuration is internally consistent with the selected published interface; the executable performs final validation.";
+  $("validation").classList.toggle("warning",errors.length>0);
+  $("badges").innerHTML="<span class='pill'>"+m.case.dimension+"-D</span><span class='pill'>"+m.numerics.integrator.toUpperCase()+"</span><span class='pill'>"+m.numerics.backend.toUpperCase()+"</span><span class='pill'>"+m.mesh.type.replaceAll("_"," ")+"</span>";
+  $("warnings").innerHTML="<ul>"+generated.warnings.map(w=>"<li>"+escapeHtml(w)+"</li>").join("")+"</ul>";
+  $("process").innerHTML=generated.process.map(p=>"<li><strong>"+escapeHtml(p.action)+"</strong>"+(p.command?"<pre>"+escapeHtml(p.command)+"</pre>":"")+"</li>").join("");
+  $("commandPreview").textContent=generated.command;$("manifestPreview").textContent=JSON.stringify(m,null,2);
+  $("configPreview").textContent=generated.nativeConfig?JSON.stringify(generated.nativeConfig,null,2):"Not applicable: this solver path is configured through explicit CLI arguments and the agent manifest.";
+  $("configDetails").classList.toggle("hidden",m.case.solver_path!=="airfoil2d");
+  return {generated,errors};
+}
+function escapeHtml(value){const node=document.createElement("div");node.textContent=String(value);return node.innerHTML}
+function shellScript(generated){const m=generated.manifest,lines=["#!/usr/bin/env bash","set -euo pipefail","","# Generated by Quick CFD Case Builder.","# Review paths and physical settings before execution.",""];
+  if(m.case.solver_path==="airfoil2d")lines.push("python3 -m pip install -r requirements.txt",...m.build.commands,"",m.run.shell_command);
+  else lines.push(...m.build.commands,"",m.run.shell_command);
+  return lines.join("\n")+"\n";
+}
+
+$("refresh").onclick=render;
+$("downloadManifest").onclick=()=>{const r=render();if(!r.errors.length)download(r.generated.name+".manifest.json",JSON.stringify(r.generated.manifest,null,2)+"\n","application/json")};
+$("downloadConfig").onclick=()=>{const r=render();if(!r.errors.length&&r.generated.nativeConfig)download(r.generated.name+".case.json",JSON.stringify(r.generated.nativeConfig,null,2)+"\n","application/json")};
+$("downloadScript").onclick=()=>{const r=render();if(!r.errors.length)download("run_"+r.generated.name+".sh",shellScript(r.generated),"text/x-shellscript")};
+$("reset").onclick=()=>{if(confirm("Restore all form defaults?")){location.reload()}};
+["solverPath","integrator","backend","gradient","initialization"].forEach(id=>$(id).addEventListener("change",render));
+$("builder").addEventListener("input",event=>{if(event.target.tagName!=="BUTTON")render()});
+const query=new URLSearchParams(location.search),requestedPath=query.get("solver"),requestedIntegrator=query.get("integrator");
+if(["airfoil2d","amr3d","unstructured3d"].includes(requestedPath))$("solverPath").value=requestedPath;
+if(["rk3","dplur"].includes(requestedIntegrator))$("integrator").value=requestedIntegrator;
+render();
+</script>
+</body>
+</html>

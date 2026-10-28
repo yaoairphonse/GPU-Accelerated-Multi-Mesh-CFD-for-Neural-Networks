@@ -73,6 +73,10 @@ python3 simple_airfoil.py \
 ```
 
 See the [simple interface and measured runtime table](docs/SIMPLE_AIRFOIL_INTERFACE.md).
+For a visual offline setup that covers the published 2-D and 3-D solver
+routes, open the [CFD case builder](tools/cfd_case_builder.html). It downloads
+a native 2-D configuration when applicable, an agent-readable manifest, and a
+reviewable build/run script; it does not execute CFD in the browser.
 
 CUDA build (defaults to `sm_89` for RTX 4090):
 
@@ -116,6 +120,7 @@ Body-fitted 3D unstructured grids and 2D airfoil test cases included in the veri
 - [L0/L1/L2 current-progress quick guide](docs/current_progress_quick_guide.html) and [text summary](docs/PROGRESS_L0_L1_L2.md)
 - [2026-10-28 AMR methods, 2D DP-LUR, and CRM continuation update](docs/AMR_METHODS_2026-10-28.md)
 - [No-tuning airfoil interface and runtime table](docs/SIMPLE_AIRFOIL_INTERFACE.md)
+- [Offline human/agent case builder and manifest format](docs/CASE_BUILDER.md)
 - [Theory and operation manual](docs/MANUAL.md)
 - [Development log and history](docs/DEVELOPMENT_HISTORY.md)
 - [Example matrix and runbooks](examples/README.md)
