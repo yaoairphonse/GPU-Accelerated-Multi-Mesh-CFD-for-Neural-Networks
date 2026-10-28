@@ -131,8 +131,9 @@ Before another large CRM mesh or long run:
    low-frequency load cycle.
 3. Run matched lower-CFL or stronger-damping branches to distinguish slow
    pseudo-time damping from a numerical or genuinely unsteady mode.
-4. Port the verified 2-D DP-LUR reference to CUDA for high-throughput NNLCI
-   input generation without changing its numerical result.
+4. Expand validation of the persistent 2-D CUDA DP-LUR path across broader
+   airfoil families and transonic Mach numbers for high-throughput NNLCI input
+   generation.
 5. Only after the CRM diagnosis, reduce AMR memory and plan targeted 30--40M-cell
    refinement around the shock, leading/trailing edges, junction, tip, and
    wake.

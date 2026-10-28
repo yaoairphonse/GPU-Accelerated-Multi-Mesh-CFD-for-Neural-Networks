@@ -92,22 +92,16 @@ Generated meshes, fields, and checkpoints should be outside the source tree.
 
 The 3-D conserved state is
 
-\[
-Q=(\rho,\rho u,\rho v,\rho w,\rho E,\rho\tilde\nu)^T.
-\]
+$$Q=(\rho,\rho u,\rho v,\rho w,\rho E,\rho\tilde\nu)^T.$$
 
 Pressure is recovered with the ideal-gas relation
 
-\[
-p=(\gamma-1)\left(\rho E-\tfrac12\rho\lVert\mathbf{u}\rVert^2\right).
-\]
+$$p=(\gamma-1)\left(\rho E-\frac{1}{2}\rho\lVert\mathbf{u}\rVert^2\right).$$
 
-The standard reference state uses \(\rho_\infty=1\),
-\(p_\infty=1/\gamma\), and velocity magnitude \(M_\infty\).  Consequently,
+The standard reference state uses $\rho_\infty=1$,
+$p_\infty=1/\gamma$, and velocity magnitude $M_\infty$.  Consequently,
 
-\[
-C_p=\frac{p-p_\infty}{\tfrac12 M_\infty^2}.
-\]
+$$C_p=\frac{p-p_\infty}{\frac{1}{2} M_\infty^2}.$$
 
 Lengths are normalized by the case reference chord or sphere radius.  Always
 record the reference area and moment point with a state; otherwise integrated
@@ -128,16 +122,10 @@ density-based method.
 
 ## 7. SA-neg turbulence model
 
-The turbulence state is the transported working variable \(\tilde\nu\).  In
+The turbulence state is the transported working variable $\tilde\nu$.  In
 schematic nondimensional form, the implemented one-equation balance is
 
-\[
-\frac{\partial(\rho\tilde\nu)}{\partial t}
-+\nabla\cdot(\rho\mathbf{u}\tilde\nu)
-=P_{SA}-D_{SA}
-+\frac{1}{\sigma}\nabla\cdot[(\mu+\rho\tilde\nu)\nabla\tilde\nu]
-+\frac{c_{b2}}{\sigma}\rho\lVert\nabla\tilde\nu\rVert^2.
-\]
+$$\frac{\partial(\rho\tilde\nu)}{\partial t} + \nabla\cdot(\rho\mathbf{u}\tilde\nu) = P_{SA}-D_{SA} + \frac{1}{\sigma}\nabla\cdot\left[(\mu+\rho\tilde\nu)\nabla\tilde\nu\right] + \frac{c_{b2}}{\sigma}\rho\lVert\nabla\tilde\nu\rVert^2.$$
 
 Production, destruction, damping, eddy viscosity, and negative-working-
 variable branches are evaluated by the SA-neg routines.  Wall distance enters
@@ -264,9 +252,7 @@ fragment stores its exact centroid, area, and oriented area vector.  The packed
 solver convention is a unit normal from fluid into solid.  Pressure force on
 the body is integrated fragment by fragment as
 
-\[
-\boldsymbol{F}_p = p_w\,\boldsymbol{n}_{f\rightarrow s}\,A,
-\]
+$$\boldsymbol{F}_p = p_w\,\boldsymbol{n}_{f\rightarrow s}\,A,$$
 
 and viscous force uses the traction formed from the same normal and fragment
 area.  Moments use the fragment centroid.  Fragment loads are subsequently
@@ -301,9 +287,7 @@ pseudo-time.  Its time coordinate is not physical unsteady time.
 DP-LUR approximately solves a linearized steady update with diagonal spectral
 radii and forward/backward neighbour sweeps.  Conceptually,
 
-\[
-(D+L+U)\Delta Q=-R(Q),
-\]
+$$(D+L+U)\Delta Q=-R(Q),$$
 
 is approximated by lower and upper relaxation without assembling a global
 matrix.  The explicit-face solver optionally applies a matrix-free

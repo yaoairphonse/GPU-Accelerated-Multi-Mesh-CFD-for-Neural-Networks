@@ -132,6 +132,6 @@ development path, but it is not a validated steady CRM solution.
 Before increasing the mesh to 30--40 million controls, use the face and
 sectional load budgets to localize the low-frequency mode.  If that mode
 cannot be damped as a steady iteration, add a true physical-time dual-time
-path and report a physical-time average.  CUDA DP-LUR for the 2-D NNLCI path
-is a separate performance task; it should preserve the CPU reference results
-before becoming the default.
+path and report a physical-time average.  The persistent 2-D CUDA DP-LUR path is verified on NACA 4412 at CFL 0.5;
+broader airfoil and Mach-envelope validation remains before making it the
+default in `simple_airfoil.py`.
