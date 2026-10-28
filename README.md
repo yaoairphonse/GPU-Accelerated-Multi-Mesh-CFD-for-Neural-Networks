@@ -137,6 +137,7 @@ Body-fitted 3D unstructured grids and 2D airfoil test cases included in the veri
 ## Documentation
 
 - [Installation and operation guide](docs/INSTALL_AND_RUN.md)
+- [Mesh data structures, readers, adjacency, and second-order reconstruction](docs/MESH_DATA_STRUCTURES.md)
 - [L0/L1/L2 current-progress quick guide](docs/current_progress_quick_guide.html) and [text summary](docs/PROGRESS_L0_L1_L2.md)
 - [2026-10-28 AMR methods, 2D DP-LUR, and CRM continuation update](docs/AMR_METHODS_2026-10-28.md)
 - [No-tuning airfoil interface and runtime table](docs/SIMPLE_AIRFOIL_INTERFACE.md)
