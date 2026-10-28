@@ -199,3 +199,85 @@ For a human- or agent-readable setup form, open
 browser.  It generates a case manifest and run script; it does not execute
 CFD in the browser.  Read the selected example runbook and verify all external
 paths before executing the generated command.
+
+## 9. AMR and unstructured mesh formats
+
+The 3-D paths use two different mesh representations. Select one based on the
+available input and desired workflow:
+
+| Route | What you provide | What the solver reads | Main preparation tool |
+|---|---|---|---|
+| Procedural Cartesian AMR (`amr3d`) | Closed, manifold aircraft surface (`.npz` or `.stl`) | A packed `QCFDAM1` directory | `tools/cartesian_amr/` pipeline |
+| Unstructured (`sphere3d`) | Tetra, wedge/hex, or polyhedral mesh converted to project format | `QCFD3D1` text or binary explicit-face mesh | `prepare_tetra` or `tools/hybrid/convert_rae2822_npz.py` |
+
+### AMR: how to use it
+
+AMR starts from a watertight surface, builds an isotropic Cartesian octree,
+clips cells against the surface to create cut cells, merges small fluid cells,
+and packages the solver tables. The CRM scripts show the complete workflow:
+
+```bash
+export CRM_SURFACE=/path/to/CRM_full_closed.npz
+bash examples/3d_crm_amr/build_meshes.sh build output/3d_crm_amr
+bash examples/3d_crm_amr/run_upperwing.sh build cuda output/3d_crm_amr
+```
+
+`build_meshes.sh` writes intermediate planning and audit data under the case
+directory and produces `output/3d_crm_amr/upperwing_l10/packed/`. The solver
+then receives that directory with `--mesh`. The full input requirements,
+memory expectations, audit commands, and continuation procedure are in the
+[CRM AMR runbook](../examples/3d_crm_amr/RUNBOOK.md). A surface file alone is
+not a solver-ready AMR mesh.
+
+### AMR: what the packed format contains
+
+`QCFDAM1` is a directory of versioned binary tables, not a single mesh file.
+`header.bin` contains magic/version/endian tags and counts for blocks,
+procedural cells, agglomerated controls, interfaces, boundaries, cut faces,
+and wall faces. The reader uses those counts to load the corresponding
+`blocks.bin`, `interfaces.bin`, `boundaries.bin`, `controls.bin`,
+`procedural_control.bin`, `procedural_status.bin`, `cut_faces.bin`,
+`wall_faces.bin`, `wall_triangle.bin`, and `wall_distance.bin` tables. Surface
+points and triangles are stored in `wall_points.bin` and
+`wall_triangles.bin`, with counts in `wall_counts.txt`.
+
+The `8x8x8` leaf blocks keep regular interior connectivity procedural; the
+tables store interfaces and geometric exceptions explicitly. Do not rename,
+omit, hand-edit, or mix files from different packed mesh builds. See
+[`solvers/3d/amr_mesh_format.h`](../solvers/3d/amr_mesh_format.h) for the
+record layouts and the runbook for the packing stages.
+
+### Unstructured: how to use it
+
+`sphere3d` reads explicit owner/neighbour faces. For the NASA tetrahedral CRM,
+the run script obtains or accepts a CGNS source, converts it to project mesh
+tables, and then runs the solver:
+
+```bash
+DOWNLOAD_NASA_CRM=1 bash examples/3d_crm_tetra/run.sh build cuda
+```
+
+You can instead set `CRM_CGNS=/path/to/file.cgns`. For the RAE2822 wedge/hex
+example, provide both archived NPZ inputs:
+
+```bash
+export RAE_TOPOLOGY=/path/to/LF1_full_topology.npz
+export RAE_TRUE_MESH=/path/to/LF1_true_mesh.npz
+bash examples/3d_rae2822_hybrid/run.sh build cuda
+```
+
+The converted `QCFD3D1` mesh stores cell centroids, volumes and wall
+distances, face ownership/neighbour or boundary codes, face centroids,
+oriented area normals, areas and distances, plus cell-face and gradient-term
+tables. `sphere3d` checks the first eight bytes: `QCFD3D1` selects the binary
+reader; otherwise it reads the documented whitespace-delimited text form.
+Both readers populate the same in-memory cell, face, adjacency and gradient
+arrays before CPU or CUDA execution. Tetrahedral connectivity and boundary
+triangles needed by node-based gradients are separate `QCFDNC1` connectivity
+and `QCFDNG1` stencil companion files; they are not embedded in `QCFD3D1`.
+
+The solver does not directly parse arbitrary CGNS, Gmsh, Fluent, SU2, or
+VTK files. Convert source data into the supported representation first. The
+format index and binary record declarations are in
+[`docs/FORMATS.md`](FORMATS.md) and
+[`solvers/3d/mesh_format.h`](../solvers/3d/mesh_format.h).
