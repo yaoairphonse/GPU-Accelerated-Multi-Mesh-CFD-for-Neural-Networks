@@ -4,6 +4,8 @@
 
 Quick CFD is a GPU-focused solver built to generate multi-fidelity compressible flow fields and aerodynamic trends for neural-network fidelity-lift and surrogate models (such as NNLCI). It includes a 3D procedural octree-AMR cut-cell solver for full aircraft configurations, an unstructured 3D explicit-face solver for general polyhedral and hybrid grids, and a 2D Cartesian cut-cell solver for airfoils. The repository provides the C++/CUDA and Python sources, mesh converters, example runbooks, and a theory manual.
 
+**Start here:** this repository has separate 2-D and 3-D entry points; there is no single `--dimension 2d|3d` command. Follow the [installation and operation guide](docs/INSTALL_AND_RUN.md), then choose `simple_airfoil.py`/`quick_cfd.py` for 2-D, `sphere3d` for explicit-face 3-D meshes, or `amr3d` for procedural Cartesian-AMR aircraft. The self-contained first checks are the NACA4412 2-D case and the 3-D sphere regression. Large CRM/RAE meshes and checkpoints are intentionally external.
+
 **Verification and validation status:** Geometry closure, freestream preservation, density/pressure positivity, checkpoint restarts, and fixed-step CPU/CUDA bitwise or near-machine-precision parity are verified across the test suite. The tested 2D NACA 4412 case is benchmarked against XFOIL for lift, moment, and surface-pressure trends. On the 3D NASA Common Research Model (CRM) 21.52M-cell octree-AMR grid, the complete observed low-to-low steady pseudo-iteration cycle (iterations 6,550--10,200) averages $C_D/C_L/C_M = 0.028936/0.565420/-0.052798$ against NASA USM3D $0.02995/0.54239/-0.06249$, corresponding to differences of $-3.385\%/+4.246\%/+15.509\%$. The instantaneous $C_M$ difference was $10.960\%$ at iteration 10,900, while the later unconverged 11,900-step endpoint drifted to $C_D/C_L/C_M = 0.029967/0.572087/-0.041837$. These are steady pseudo-iteration diagnostics rather than a physical-time average; pitching moment and the near-body residual remain unstable, so fixed-point convergence and quantitative 3D load validation are not claimed.
 
 ![CRM full-aircraft 3D surface pressure from the Cartesian-AMR solver](examples/3d_crm_amr/showcase/crm_amr_surface_cp_3d.png)
@@ -62,6 +64,10 @@ All solvers use a density-based finite-volume formulation (explicit RK3 or impli
 
 ## Build and Quick Start
 
+For a complete, non-ambiguous installation and case-routing procedure, see
+the [Installation and Operation Guide](docs/INSTALL_AND_RUN.md). The short
+commands below are retained as a quick reference.
+
 For the locked no-tuning airfoil interface, choose only the algorithm, nominal mesh count, and freestream conditions:
 
 ```bash
@@ -99,6 +105,10 @@ cmake --build build -j 8
 ctest --test-dir build --output-on-failure
 ```
 
+Use the CUDA architecture matching the installed GPU; `sm_89` is only the
+published RTX 4090 example. CPU-only users should use `build_cpu` with
+`-DCFD_CUDA=OFF` as shown in the guide.
+
 CPU-only build (OpenMP):
 
 ```bash
@@ -126,6 +136,7 @@ Body-fitted 3D unstructured grids and 2D airfoil test cases included in the veri
 
 ## Documentation
 
+- [Installation and operation guide](docs/INSTALL_AND_RUN.md)
 - [L0/L1/L2 current-progress quick guide](docs/current_progress_quick_guide.html) and [text summary](docs/PROGRESS_L0_L1_L2.md)
 - [2026-10-28 AMR methods, 2D DP-LUR, and CRM continuation update](docs/AMR_METHODS_2026-10-28.md)
 - [No-tuning airfoil interface and runtime table](docs/SIMPLE_AIRFOIL_INTERFACE.md)
