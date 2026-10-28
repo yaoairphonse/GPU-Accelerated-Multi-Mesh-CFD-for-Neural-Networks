@@ -28,7 +28,19 @@
     "wall_probe_min_h": 0.25
   },
   "solver": {
+    "integrator": "rk3",
+    "dplur": {
+      "CFL": 4.0,
+      "sweeps": 5,
+      "omega": 0.8,
+      "block_coupling": true,
+      "maximum_iterations": 50000,
+      "check_interval": 100
+    },
     "spatial_order": 1,
+    "wall_pressure_reconstruction": "centroid",
+    "wall_pressure_probe_blend": 0.0,
+    "wall_pressure_probe_distances_h": [1.5, 2.5],
     "preconditioning": "none",
     "mach_floor": 0.02,
     "local_pseudo_time": false,
@@ -160,6 +172,7 @@
     "region_xy_c": null,
     "sample_points_xy_c": [],
     "surface": true,
+    "audit_budgets": false,
     "surface_patches": [
       1,
       2,

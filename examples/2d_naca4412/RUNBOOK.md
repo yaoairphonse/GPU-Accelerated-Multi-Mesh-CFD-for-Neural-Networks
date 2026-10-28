@@ -35,7 +35,7 @@ bash examples/2d_naca4412/run.sh cuda build/quick_airfoil
 The Python driver validates and resolves the configuration, constructs LF1 and
 LF2 meshes, launches the standalone solver, rejects stale binaries, and writes
 an HTML result index.  Expected control-volume counts are about 4,718 and
-9,517.  The retained run required about 20.07 and 33.09 process seconds.
+9,517.  Fresh simple-interface runs required 20.38 and 33.42 process seconds.
 
 ## 4. Check the result
 
@@ -59,7 +59,28 @@ The configured gate requires the raw residual, CL/CM change, and wall-length-
 weighted Cp change to remain below their thresholds for five reports.  Passing
 this development gate does not validate skin-friction drag or transition.
 
-## 6. CPU/CUDA comparison
+## 6. CPU DP-LUR reference
+
+The opt-in 2-D DP-LUR implementation is currently a CPU reference path.  It
+uses the same mesh, residual, second-order reconstruction, Turkel
+preconditioning, SA-neg model, and convergence gate:
+
+```bash
+bash examples/2d_naca4412/run_dplur.sh build_cpu/quick_airfoil
+```
+
+The retained LF1 run reached the gate after 1,900 pseudo-iterations in 7.70 s
+process time, with CL/CD/CM = 0.660046/0.006801/0.107250 and no rejected
+updates.  LF2 uses a lower locked CFL and reached the gate after 5,900
+iterations in 48.25 s.  Lift and moment are trend checks; drag remains
+unvalidated.  Setting
+`output.audit_budgets=true` also writes per-face-family conservation and
+chordwise pressure/viscous load budgets next to the internal flow files.
+
+CUDA DP-LUR is not implemented for this 2-D path yet.  Use `case.json` and
+`run.sh` for the retained CUDA RK3 production path.
+
+## 7. CPU/CUDA comparison
 
 Run the same short fixed-step case with both backends and compare the exported
 states.  The retained 19-step order-2 test agreed to relative Linf 1.20e-15.

@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-28",
+  "scope": "21.523M-control procedural Cartesian-AMR CRM steady pseudo-time convergence study; aerodynamic validation remains open",
+  "cells": 21523036,
+  "total_pseudo_iterations": 11900,
+  "latest_segment": {
+    "iterations": 1200,
+    "CFL": 12.0,
+    "compute_seconds_RTX4090": 549.223226661,
+    "CD": 0.029967111688381377,
+    "CL": 0.5720872595351719,
+    "CM_y": -0.04183690271745458,
+    "global_total_residual": 3.760838151251714e-05,
+    "near_field_total_residual": 0.0013105402007795631,
+    "checkpoint_sha256": "01fe27f74348cf0b0a6aff308efeb8151cca0d69c81f68c1c4264f7746d050f5"
+  },
+  "complete_pseudo_iteration_cycle_average": {
+    "cumulative_iteration_range": [6550, 10200],
+    "CD": 0.028936339,
+    "CL": 0.565419763,
+    "CM_y": -0.052798341,
+    "warning": "This is a steady-solver pseudo-iteration cycle average, not a physical-time URANS average."
+  },
+  "NASA_USM3D_reference": {
+    "CD": 0.02995,
+    "CL": 0.54239,
+    "CM_y": -0.06249
+  },
+  "fixed_point_converged": false
+}

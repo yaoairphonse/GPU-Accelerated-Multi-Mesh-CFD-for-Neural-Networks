@@ -1,0 +1,38 @@
+{
+  "freestream": {
+    "Mach": 0.2,
+    "AOA_degrees": 1.5,
+    "p_Pa": 101325.0,
+    "T_K": 288.15,
+    "chord_m": 1.0
+  },
+  "solver": {
+    "integrator": "dplur",
+    "dplur": {
+      "CFL": 4.0,
+      "sweeps": 5,
+      "omega": 0.8,
+      "block_coupling": true,
+      "maximum_iterations": 5000,
+      "check_interval": 100
+    },
+    "spatial_order": 2,
+    "preconditioning": "turkel",
+    "mach_floor": 0.02,
+    "local_pseudo_time": false,
+    "adaptive_cfl": {"enabled": false},
+    "mode": "steady",
+    "budget_seconds": 15.0,
+    "stop_time_star": 150.0,
+    "convergence": {
+      "metric": "cl_cm_cp",
+      "raw_tolerance": 0.01,
+      "coefficient_change": 0.005,
+      "cp_change": 0.005
+    }
+  },
+  "output": {
+    "formats": ["npz"],
+    "audit_budgets": true
+  }
+}

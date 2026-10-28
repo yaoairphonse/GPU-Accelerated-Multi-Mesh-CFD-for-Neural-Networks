@@ -405,12 +405,18 @@ conservation test.
 - RAE2822 LF1: solver gate passed; full lineage and Fluent reference still
   need consolidation.
 - CRM tetra: solver and diagnostics work, but SA and drag remain unconverged.
-- CRM AMR 21.52M: the 5,000-update state has wing Cp RMSE 0.10034; its
-  cumulative-iteration 4,000--5,000 average CL/CD/CM is
-  0.523661/0.026297/-0.024508, but the last-500 average differs and loads are
-  not converged.  This pseudo-iteration average is not a URANS time average.
+- CRM AMR 21.52M: the 11,900-update endpoint CD/CL/CM is
+  0.029967/0.572087/-0.041837. A complete observed low-to-low trajectory cycle
+  averages 0.028936/0.565420/-0.052798, but the loads and near-body residual
+  remain insufficiently stable. This steady pseudo-iteration cycle is not a
+  URANS time average.
 
-Ongoing CRM work focuses on isolating the low-frequency pitching-moment oscillation across procedural interior, 2:1 interface, cut-cell, and wall face families, followed by GPU memory reduction and targeted 30–40M cell refinement around the shock, wing-body junction, tip, and wake.
+Face-family residual/load budgets are now implemented. Ongoing CRM work uses
+them with upper-wing shock/sectional-moment tracking to localize the remaining
+mode. Only a fixed physical time step with converged inner iterations may be
+physically time-averaged. GPU memory reduction and targeted 30–40M cell
+refinement around the shock, wing-body junction, tip, and wake follow that
+diagnosis.
 
 ## 22. Reproducible cleanup
 

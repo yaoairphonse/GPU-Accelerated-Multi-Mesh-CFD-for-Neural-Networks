@@ -60,7 +60,12 @@ def validate(c):
         raise ValueError('this driver requires mesh.method=cartesian_amr_2d')
     # Older saved runs predate the optional steady-development controls.
     s.setdefault('preconditioning','none');s.setdefault('mach_floor',.02);s.setdefault('local_pseudo_time',False)
+    s.setdefault('integrator','rk3')
+    s.setdefault('dplur',dict(CFL=4.0,sweeps=5,omega=.8,block_coupling=True,maximum_iterations=50000,check_interval=100))
     s.setdefault('spatial_order',1)
+    s.setdefault('wall_pressure_reconstruction','centroid')
+    s.setdefault('wall_pressure_probe_blend',0.0)
+    s.setdefault('wall_pressure_probe_distances_h',[1.5,2.5])
     s.setdefault('adaptive_cfl',dict(enabled=False,minimum=.03,maximum=.45,growth=1.1,shrink=.5))
     for k in ['Mach', 'p_Pa', 'T_K', 'chord_m', 'R_J_kgK']:
         positive(f[k], 'freestream.' + k)
@@ -78,9 +83,31 @@ def validate(c):
     positive(p['wall_probe_min_h'], 'wall_probe_min_h', 2, True)
     if s['backend'] not in ['cpu', 'cuda'] or s['flux'] not in ['hllc', 'ausm'] or s['sa_layout'] not in ['reference', 'fused'] or s['mode'] not in ['steady', 'time']:
         raise ValueError('invalid backend, flux, sa_layout, or solver mode')
+    if s['integrator'] not in ['rk3','dplur']:
+        raise ValueError('solver.integrator must be rk3|dplur')
+    dplur=s['dplur']
+    if not isinstance(dplur,dict) or not isinstance(dplur['block_coupling'],bool):
+        raise ValueError('solver.dplur must be an object and block_coupling must be boolean')
+    positive(dplur['CFL'],'solver.dplur.CFL',20)
+    integer(dplur['sweeps'],'solver.dplur.sweeps',1,50)
+    positive(dplur['omega'],'solver.dplur.omega',1)
+    integer(dplur['maximum_iterations'],'solver.dplur.maximum_iterations',1,100000000)
+    integer(dplur['check_interval'],'solver.dplur.check_interval',1,dplur['maximum_iterations'])
+    if s['integrator']=='dplur' and (s['backend']!='cpu' or s['mode']!='steady' or s['time_step']['mode']!='cfl'):
+        raise ValueError('the verified 2D DP-LUR reference path currently requires backend=cpu, mode=steady, and CFL time-step mode')
     if s['preconditioning'] not in ['none', 'turkel']:
         raise ValueError('solver.preconditioning must be none|turkel')
     integer(s['spatial_order'], 'solver.spatial_order', 1, 2)
+    if s['wall_pressure_reconstruction'] not in ['centroid','normal-probe']:
+        raise ValueError('solver.wall_pressure_reconstruction must be centroid|normal-probe')
+    positive(s['wall_pressure_probe_blend'], 'solver.wall_pressure_probe_blend', 1, True)
+    distances=s['wall_pressure_probe_distances_h']
+    if not isinstance(distances,list) or len(distances)!=2:
+        raise ValueError('solver.wall_pressure_probe_distances_h requires two values')
+    positive(distances[0], 'solver.wall_pressure_probe_distances_h[0]')
+    positive(distances[1], 'solver.wall_pressure_probe_distances_h[1]')
+    if distances[1] <= distances[0]:
+        raise ValueError('wall pressure probe distances must be strictly increasing')
     positive(s['mach_floor'], 'solver.mach_floor', 1)
     ac=s['adaptive_cfl']
     if not isinstance(s['local_pseudo_time'],bool) or not isinstance(ac['enabled'],bool):
@@ -90,6 +117,8 @@ def validate(c):
         raise ValueError('invalid adaptive CFL bounds or factors')
     if (s['local_pseudo_time'] or ac['enabled']) and (s['mode']!='steady' or s['time_step']['mode']!='cfl'):
         raise ValueError('local/adaptive stepping is restricted to steady pseudo-time with automatic CFL')
+    if s['integrator']=='dplur' and (s['local_pseudo_time'] or ac['enabled']):
+        raise ValueError('DP-LUR already uses local pseudo-time; disable explicit local_pseudo_time and adaptive_cfl')
     if s['preconditioning'] != 'none' and (s['mode'] != 'steady' or s['time_step']['mode'] != 'cfl'):
         raise ValueError('preconditioning requires steady pseudo-time and automatic CFL')
     for k, maximum in [('CFL', .5), ('viscous_CFL', .2), ('SA_CFL', .1)]:
@@ -145,8 +174,9 @@ def validate(c):
         bounds(o['region_xy_c'], 'output.region_xy_c')
     if not set(o['surface_patches']) <= {1, 2, 3}:
         raise ValueError('surface_patches must use 1 upper, 2 lower, 3 trailing edge')
-    if not isinstance(o.get('volume',True),bool) or not isinstance(o['surface'], bool) or not isinstance(o['loads'], bool):
-        raise ValueError('output.volume/surface/loads must be booleans')
+    o.setdefault('audit_budgets',False)
+    if not isinstance(o.get('volume',True),bool) or not isinstance(o['surface'], bool) or not isinstance(o['loads'], bool) or not isinstance(o['audit_budgets'],bool):
+        raise ValueError('output.volume/surface/loads/audit_budgets must be booleans')
     for point in o['sample_points_xy_c']:
         if len(point) != 2 or not all(math.isfinite(x) for x in point):
             raise ValueError('sample point requires two finite coordinates')
@@ -176,6 +206,9 @@ def settings(c, label, name, mode=None):
     b = m['bounds_xy_c']
     r = cv['residual_region_xy_c']
     out = dict(name=name, mode=mode or s['mode'], backend=s['backend'], mesh_preset=label,
+               integrator=s['integrator'],dplur_cfl=s['dplur']['CFL'],dplur_sweeps=s['dplur']['sweeps'],
+               dplur_omega=s['dplur']['omega'],dplur_block=int(s['dplur']['block_coupling']),
+               dplur_iterations=s['dplur']['maximum_iterations'],dplur_check=s['dplur']['check_interval'],
                preconditioning=s['preconditioning'], mach_floor=s['mach_floor'],
                local_pseudo_time=int(s['local_pseudo_time']),adaptive_cfl=int(s['adaptive_cfl']['enabled']),
                cfl_min=s['adaptive_cfl']['minimum'],cfl_max=s['adaptive_cfl']['maximum'],
@@ -186,13 +219,18 @@ def settings(c, label, name, mode=None):
                nx=m['base_shape'][0], ny=m['base_shape'][1], levels=profile['levels'],
                buffer=m['wall_buffer'], max_cells=m['max_cells'], xmin=b[0], xmax=b[1], ymin=b[2], ymax=b[3],
                cfl=s['CFL'], spatial_order=s['spatial_order'], fixed_dt=(s['time_step']['dt_seconds']/scale['time'] if s['time_step']['mode']=='fixed' else 0),
+               wall_pressure_reconstruction=s['wall_pressure_reconstruction'],
+               wall_pressure_probe_blend=s['wall_pressure_probe_blend'],
+               wall_pressure_probe_distance1=s['wall_pressure_probe_distances_h'][0],
+               wall_pressure_probe_distance2=s['wall_pressure_probe_distances_h'][1],
                flux=s['flux'], moment_x=s['moment_reference_xy_c'][0], moment_y=s['moment_reference_xy_c'][1],
                raw_tol=cv['raw_tolerance'], load_tol=cv['coefficient_change'], cp_tol=cv['cp_change'], convergence_metric=cv['metric'], hold=cv['hold'],
                tmin=cv['min_time_star'], period=cv['check_period_star'],
                res_xmin=r[0], res_xmax=r[1], res_ymin=r[2], res_ymax=r[3],
                outlet_p_star=c['boundaries']['outlet_pressure_Pa']/scale['pressure'],
                sa_nu_inf=p['sa_nu_inf_over_nu']*mu, sutherland_star=p['sutherland']['S_K']/scale['temperature'],
-               viscous_cfl=s['viscous_CFL'], sa_cfl=s['SA_CFL'], wall_probe_min_h=p['wall_probe_min_h'])
+               viscous_cfl=s['viscous_CFL'], sa_cfl=s['SA_CFL'], wall_probe_min_h=p['wall_probe_min_h'],
+               face_budget_audit=int(c['output'].get('audit_budgets',False)))
     for index, side in enumerate(['xmin', 'xmax', 'ymin', 'ymax']):
         out['bc'+str(index)] = c['boundaries'][side]
     return '\n'.join(f'{k} {v}' for k, v in out.items()) + '\n' + ''.join('box '+' '.join(map(str, box))+'\n' for box in profile['boxes'])

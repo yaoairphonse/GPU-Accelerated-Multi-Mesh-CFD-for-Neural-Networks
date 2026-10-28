@@ -201,7 +201,9 @@ bool residual(const StaticAmrMesh2D& m,const Params2D& p,const std::vector<doubl
       for(int v=0;v<4;++v)sum[v]+=sign*(*flux)[v*nf+face];
     }
     for(size_t q=c.wall_begin;q<c.wall_begin+c.wall_count;++q) {
-      const auto& wall=m.walls[q];const double pressure=p.amr_spatial_order==2?amr_point_value(w->data(),slopes.data(),n,3,k,c,amr_wall_x(wall),amr_wall_y(wall)):(*w)[3*n+k];
+      const auto& wall=m.walls[q];const double pressure=amr_wall_pressure_value(p.amr_spatial_order,p.wall_pressure_reconstruction,
+        p.wall_pressure_probe_blend,w->data(),slopes.empty()?nullptr:slopes.data(),n,q,c,wall,
+        m.wall_pressure_samples.empty()?nullptr:m.wall_pressure_samples.data());
       sum[1]+=pressure*wall.nx*wall.length;sum[2]+=pressure*wall.ny*wall.length;
     }
     for(int v=0;v<4;++v)(*r)[v*n+k]=-sum[v]/c.volume;
@@ -256,12 +258,13 @@ void static_amr2d_reconstruct(const StaticAmrMesh2D& m,const std::vector<double>
 }
 
 int static_amr2d_wall_pressure(const StaticAmrMesh2D& m,const Params2D& p,const std::vector<double>& u,std::vector<double>* pressure) {
-  const size_t n=m.cells.size();if(!pressure||u.size()<(m.transport.sa_model?5:4)*n)return 1;
+  const size_t n=m.cells.size();if(!pressure||u.size()<(m.transport.sa_model?5:4)*n||!static_amr2d_wall_pressure_ready(m,p))return 1;
   std::vector<double> w,slopes;if(!primitive(u,n,p.gamma,&w))return 1;
   if(p.amr_spatial_order==2)static_amr2d_reconstruct(m,w,&slopes);
   pressure->resize(m.walls.size());
   for(size_t q=0;q<m.walls.size();++q){const auto& wall=m.walls[q];const size_t k=wall.owner_cell;
-    (*pressure)[q]=p.amr_spatial_order==2?amr_point_value(w.data(),slopes.data(),n,3,k,m.cells[k],amr_wall_x(wall),amr_wall_y(wall)):w[3*n+k];}
+    (*pressure)[q]=amr_wall_pressure_value(p.amr_spatial_order,p.wall_pressure_reconstruction,p.wall_pressure_probe_blend,
+      w.data(),slopes.empty()?nullptr:slopes.data(),n,q,m.cells[k],wall,m.wall_pressure_samples.empty()?nullptr:m.wall_pressure_samples.data());}
   return 0;
 }
 
@@ -421,7 +424,7 @@ int static_amr2d_initialize(const StaticAmrMesh2D& m,const Params2D& p,const std
 
 int static_amr2d_rhs(const StaticAmrMesh2D& m,const Params2D& p,const std::vector<double>& u,
                      std::vector<double>* result,std::vector<double>* face_flux) {
-  if(!static_amr2d_viscous_ready(m)||!result||m.cells.empty()||u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!(p.gamma>1))return 1;
+  if(!static_amr2d_viscous_ready(m)||!static_amr2d_wall_pressure_ready(m,p)||!result||m.cells.empty()||u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!(p.gamma>1))return 1;
   for(int side=0;side<4;++side)if(!amr_bc_valid(m.boundaries[side],p.bc[side],side))return 1;
   std::vector<double> w,flux,speed;
   if(!residual(m,p,u,result,&w,&flux,&speed))return 1;
@@ -436,7 +439,7 @@ int static_amr2d_redistribute(const StaticAmrMesh2D& m,std::vector<double>* u) {
 
 int static_amr2d_run(const StaticAmrMesh2D& m,const Params2D& p,double tend,long maxsteps,StaticAmrState2D* s,std::string* error) {
   const auto invalid=[&](const std::string& message){fail(error,message);return 1;};
-  if(!static_amr2d_viscous_ready(m)||!s||m.cells.empty()||s->u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!std::isfinite(s->time)||s->time<0||!std::isfinite(tend)||tend<s->time||maxsteps<1||
+  if(!static_amr2d_viscous_ready(m)||!static_amr2d_wall_pressure_ready(m,p)||!s||m.cells.empty()||s->u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!std::isfinite(s->time)||s->time<0||!std::isfinite(tend)||tend<s->time||maxsteps<1||
      !(p.gamma>1)||!std::isfinite(p.gamma)||!(p.cfl>0)||p.cfl>0.5||!std::isfinite(p.dt_fixed)||p.dt_fixed<0||
      !std::isfinite(p.ausm_mco)||p.ausm_mco<=0||p.time_integrator!=TIME_SSP_RK3||(p.amr_spatial_order!=1&&p.amr_spatial_order!=2)||
      (p.flux!=FLUX_HLLC&&p.flux!=FLUX_AUSMPUP))return invalid("static AMR requires first-order RK3, valid state/options and CFL <= 0.5");

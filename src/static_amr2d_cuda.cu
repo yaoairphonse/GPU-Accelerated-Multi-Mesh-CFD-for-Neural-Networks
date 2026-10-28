@@ -26,7 +26,8 @@ struct Config {
   bool precondition=false,local_time=false;double mach_reference=.2,mach_floor=.02;
   size_t n,nf,nw,nv;
   double gamma,cfl,fixed_dt,mco;
-  int flux,bc[4],small,agglomerated,spatial_order;
+  int flux,bc[4],small,agglomerated,spatial_order,wall_pressure_reconstruction;
+  double wall_pressure_probe_blend;
   AmrBoundary2D boundary[4];
   AmrTransport2D transport;
 };
@@ -34,6 +35,7 @@ struct Data {
   AmrCell2D* cells=nullptr;
   AmrFace2D* faces=nullptr;
   WallFragment2D* walls=nullptr;
+  AmrWallPressureSample2D* wall_pressure_samples=nullptr;
   size_t *offset=nullptr,*face_ids=nullptr,*goff=nullptr,*members=nullptr,*moff=nullptr,*groups=nullptr;
   double *gvol=nullptr,*u=nullptr,*u1=nullptr,*u2=nullptr,*w=nullptr,*r0=nullptr,*r=nullptr;
   size_t* reconstruction_offsets=nullptr;AmrReconstructionTerm2D* reconstruction_terms=nullptr;double* slopes=nullptr;
@@ -180,7 +182,8 @@ __global__ void collect_kernel(Config cfg,Data d,double* r,bool base) {
   }
   const double pressure=d.w[3*cfg.n+k],sound=sqrt(cfg.gamma*pressure/d.w[k]);
   const double a=cfg.precondition?sound*sqrt(lm_beta2(d.w[cfg.n+k]*d.w[cfg.n+k]+d.w[2*cfg.n+k]*d.w[2*cfg.n+k],sound*sound,cfg.mach_reference,cfg.mach_floor)):sound;
-  for(size_t q=cell.wall_begin;q<cell.wall_begin+cell.wall_count;++q){const auto wall=d.walls[q];const double wall_pressure=cfg.spatial_order==2?amr_point_value(d.w,d.slopes,cfg.n,3,k,cell,amr_wall_x(wall),amr_wall_y(wall)):pressure;
+  for(size_t q=cell.wall_begin;q<cell.wall_begin+cell.wall_count;++q){const auto wall=d.walls[q];const double wall_pressure=amr_wall_pressure_value(cfg.spatial_order,cfg.wall_pressure_reconstruction,cfg.wall_pressure_probe_blend,
+      d.w,d.slopes,cfg.n,q,cell,wall,d.wall_pressure_samples);
     sum[1]+=wall_pressure*wall.nx*wall.length;sum[2]+=wall_pressure*wall.ny*wall.length;if(base)spectral+=a*wall.length;if(cfg.transport.model==AMR_MODEL_LAMINAR){for(int v=0;v<4;++v)sum[v]-=d.wall_flux[v*cfg.nw+q];if(base)diffusion+=d.wall_coefficient[q]*wall.length;}
     if constexpr(JoinSA){sa_net-=d.sa_wall_flux[q];if(base)sa_spectral+=d.sa_wall_coefficient[q];}}
   for(int v=0;v<4;++v)r[v*cfg.n+k]=-sum[v]/cell.volume;
@@ -314,7 +317,7 @@ void host_metadata(const StaticAmrGpu* s,StaticAmrState2D* state) {
 int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const StaticAmrState2D& initial,
                           const AmrGpuOptions& options,StaticAmrGpu** result,std::string* error) {
   if(!result)return 1;*result=nullptr;
-  if(!static_amr2d_viscous_ready(m)||m.cells.empty()||m.faces.empty()||initial.u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!std::isfinite(initial.time)||initial.time<0||
+  if(!static_amr2d_viscous_ready(m)||!static_amr2d_wall_pressure_ready(m,p)||m.cells.empty()||m.faces.empty()||initial.u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!std::isfinite(initial.time)||initial.time<0||
      options.batch_trials<1||options.batch_trials>1024||(p.amr_spatial_order!=1&&p.amr_spatial_order!=2)||p.time_integrator!=TIME_SSP_RK3||
      !std::isfinite(p.gamma)||!(p.gamma>1)||!(p.cfl>0)||p.cfl>.5||!std::isfinite(p.dt_fixed)||p.dt_fixed<0||
      !std::isfinite(p.ausm_mco)||p.ausm_mco<=0||(p.flux!=FLUX_HLLC&&p.flux!=FLUX_AUSMPUP)) {if(error)*error="invalid AMR GPU configuration";return 1;}
@@ -325,6 +328,8 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   s->cfg.precondition=p.low_mach_preconditioning;s->cfg.mach_reference=p.low_mach_reference;s->cfg.mach_floor=p.low_mach_floor;
   s->cfg.local_time=p.local_pseudo_time;
   s->cfg.spatial_order=p.amr_spatial_order;
+  s->cfg.wall_pressure_reconstruction=p.wall_pressure_reconstruction;
+  s->cfg.wall_pressure_probe_blend=p.wall_pressure_probe_blend;
   for(int i=0;i<4;++i){s->cfg.bc[i]=p.bc[i];s->cfg.boundary[i]=m.boundaries[i];}
   if(!checked(cudaStreamCreateWithFlags(&s->stream,cudaStreamNonBlocking),error,"AMR stream"))return 1;
   if(options.event_timing&&(!checked(cudaEventCreate(&s->batch_start),error,"AMR timing start")||
@@ -333,6 +338,8 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   if(!upload(s,&d.cells,m.cells,error)||!upload(s,&d.faces,m.faces,error)||!upload(s,&d.walls,m.walls,error)||
      !upload(s,&d.offset,m.face_offsets,error)||!upload(s,&d.face_ids,m.cell_faces,error)||!upload(s,&d.goff,m.group_offsets,error)||
      !upload(s,&d.members,m.group_members,error)||!upload(s,&d.moff,m.member_offsets,error)||!upload(s,&d.groups,m.member_groups,error)||!upload(s,&d.gvol,m.group_volume,error))return 1;
+  if(s->cfg.wall_pressure_reconstruction==WALL_PRESSURE_NORMAL_PROBE&&
+     !upload(s,&d.wall_pressure_samples,m.wall_pressure_samples,error))return 1;
   if(s->cfg.spatial_order==2){if(!upload(s,&d.reconstruction_offsets,m.reconstruction_offsets,error)||
       !upload(s,&d.reconstruction_terms,m.reconstruction_terms,error)||!alloc(s,&d.slopes,8*s->cfg.n,error))return 1;}
   if(m.transport.model==AMR_MODEL_LAMINAR){

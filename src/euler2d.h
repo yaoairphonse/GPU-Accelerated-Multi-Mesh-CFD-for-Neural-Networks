@@ -22,6 +22,10 @@ enum { NVAR2D = 4 };  // rho, rho*u, rho*v, rho*E
 
 enum SolverBackend { BACKEND_CPU = 0, BACKEND_CUDA = 1 };
 enum TimeIntegrator2D { TIME_SSP_RK3 = 0, TIME_BACKWARD_EULER = 1 };
+enum WallPressureReconstruction2D {
+  WALL_PRESSURE_CENTROID = 0,
+  WALL_PRESSURE_NORMAL_PROBE = 1
+};
 
 // 1D grid stretching, applied independently in x or y.
 enum StretchType {
@@ -44,6 +48,10 @@ struct Params2D {
   int flux;         // FluxType
   int limiter;      // LimiterType
   int amr_spatial_order = 1; // static cut-cell solver only: 1 constant, 2 limited least squares
+  int wall_pressure_reconstruction = WALL_PRESSURE_CENTROID;
+  double wall_pressure_probe_blend = 0;
+  double wall_pressure_probe_distance1 = 1.5;
+  double wall_pressure_probe_distance2 = 2.5;
   double venkat_k;  // Venkatakrishnan K.
   double ausm_mco;  // AUSM+-up reference Mach number, overridable per case.
   int bc[4];        // BCType for xmin,xmax,ymin,ymax; periodic boundaries must be paired.

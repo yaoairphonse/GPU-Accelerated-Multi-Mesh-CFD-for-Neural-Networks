@@ -27,6 +27,8 @@ void usage() {
     "  --bc-xmin/--bc-xmax/--bc-ymin/--bc-ymax transmissive|reflect|farfield|total-inlet|pressure-outlet\n"
     "  --bc-reference-SIDE rho,u,v,p --bc-total-SIDE Pt,Tt,R,dx,dy --bc-pressure-SIDE p\n"
     "  --mesh-only --backend cpu|cuda --limiter first --time-integrator rk3\n"
+    "  --spatial-order 1|2 --wall-pressure-reconstruction centroid|normal-probe\n"
+    "  --wall-pressure-probe-blend B --wall-pressure-probe-distances d1,d2\n"
     "  --binary [--snapshot-times .1,.5,1,2.6,3.9] --gpu-batch 32 --gpu-graph on|off\n"
     "  --model euler|laminar --mu MU | --re RE --reference-length L (default 1)\n"
     "  --viscosity constant|sutherland --sutherland-Tref T --sutherland-S S --gas-constant R\n"
@@ -139,6 +141,10 @@ int main(int argc,char** argv) {
     else if(key=="--backend"){ok=value=="cpu"||value=="cuda";backend=value;}
     else if(key=="--gpu-batch")ok=integer(value,&gpu_options.batch_trials)&&gpu_options.batch_trials>0&&gpu_options.batch_trials<=1024;
     else if(key=="--gpu-graph"){ok=value=="on"||value=="off";gpu_options.graph=value=="on";}
+    else if(key=="--spatial-order")ok=integer(value,&params.amr_spatial_order)&&(params.amr_spatial_order==1||params.amr_spatial_order==2);
+    else if(key=="--wall-pressure-reconstruction"){ok=value=="centroid"||value=="normal-probe";params.wall_pressure_reconstruction=value=="normal-probe"?WALL_PRESSURE_NORMAL_PROBE:WALL_PRESSURE_CENTROID;}
+    else if(key=="--wall-pressure-probe-blend")ok=number(value,&params.wall_pressure_probe_blend)&&params.wall_pressure_probe_blend>=0&&params.wall_pressure_probe_blend<=1;
+    else if(key=="--wall-pressure-probe-distances"){std::vector<double> values;ok=numbers(value,2,&values)&&values[0]>0&&values[1]>values[0];if(ok){params.wall_pressure_probe_distance1=values[0];params.wall_pressure_probe_distance2=values[1];}}
     else if(key=="--snapshot-times")ok=numbers(value,0,&snapshot_times);
     else if(key=="--limiter")ok=value=="first";
     else if(key=="--time-integrator")ok=value=="rk3";

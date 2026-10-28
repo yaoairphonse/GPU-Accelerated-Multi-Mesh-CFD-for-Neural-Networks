@@ -44,6 +44,10 @@ struct AmrFace2D {
   double coordinate, lo, hi, length, centroid;
 };
 struct AmrReconstructionTerm2D { int neighbor; double x, y; };
+struct AmrWallPressureSample2D {
+  int first=-1,second=-1;
+  double first_distance=0,second_distance=0;
+};
 struct StaticAmrMesh2D {
   StaticAmrOptions2D options;
   AmrBoundary2D boundaries[4]; // xmin/xmax/ymin/ymax; immutable during a GPU session
@@ -63,6 +67,9 @@ struct StaticAmrMesh2D {
   std::vector<size_t> face_offsets, cell_faces;
   std::vector<size_t> reconstruction_offsets;
   std::vector<AmrReconstructionTerm2D> reconstruction_terms;
+  // Fixed fluid-side pressure donors.  The table is empty unless the optional
+  // normal-probe wall-pressure reconstruction is requested during setup.
+  std::vector<AmrWallPressureSample2D> wall_pressure_samples;
   std::vector<size_t> group_offsets, group_members, member_offsets, member_groups;
   std::vector<double> group_volume;
   size_t background_leaves = 0, coarse_fine_faces = 0, small_cells = 0;
@@ -75,6 +82,8 @@ struct StaticAmrState2D {
 int static_amr2d_build(const StaticAmrOptions2D& options,
                        const std::vector<double>& px, const std::vector<double>& py,
                        const std::vector<int>& patches, StaticAmrMesh2D* mesh, std::string* error);
+int static_amr2d_prepare_wall_pressure(StaticAmrMesh2D*,const Params2D&,std::string*);
+bool static_amr2d_wall_pressure_ready(const StaticAmrMesh2D&,const Params2D&);
 int static_amr2d_initialize(const StaticAmrMesh2D& mesh, const Params2D& params,
                             const std::array<double,4>& primitive, StaticAmrState2D* state);
 int static_amr2d_run(const StaticAmrMesh2D& mesh, const Params2D& params,

@@ -1,7 +1,7 @@
 {
   "figure": "crm_amr_surface_cp_3d.png",
   "geometry": "CRM_full_closed.npz",
-  "run": "crm_amr_upperwing_l10_block_total5000_20261024",
+  "run": "crm_amr_latest_surface_20261028",
   "surface_triangles": 194980,
   "active_controls": 21523036,
   "Mach": 0.85,

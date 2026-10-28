@@ -1,0 +1,56 @@
+{
+  "description": "continuous restart-segment history; steady pseudo-iterations, not physical-time samples",
+  "segments": [
+    {
+      "offset": 1278,
+      "history": "crm_amr_upperwing_l10_block_total5000_20261024/history.csv",
+      "first_total_iteration": 1278,
+      "last_total_iteration": 5000
+    },
+    {
+      "offset": 5000,
+      "history": "cfl4_omega08_1800/history.csv",
+      "first_total_iteration": 5050,
+      "last_total_iteration": 6800
+    },
+    {
+      "offset": 6800,
+      "history": "cfl4_omega08_segment2_1800/history.csv",
+      "first_total_iteration": 6850,
+      "last_total_iteration": 8600
+    },
+    {
+      "offset": 8600,
+      "history": "cfl4_omega08_segment3_1300/history.csv",
+      "first_total_iteration": 8650,
+      "last_total_iteration": 9900
+    },
+    {
+      "offset": 9900,
+      "history": "cfl4_omega08_segment4_800/history.csv",
+      "first_total_iteration": 9950,
+      "last_total_iteration": 10700
+    },
+    {
+      "offset": 10700,
+      "history": "segment1_1200/history.csv",
+      "first_total_iteration": 10750,
+      "last_total_iteration": 11900
+    }
+  ],
+  "points": 177,
+  "first_total_iteration": 1278,
+  "last_total_iteration": 11900,
+  "endpoint": {
+    "CD": 0.029967111688381377,
+    "CL": 0.5720872595351719,
+    "CM_y": -0.04183690271745458,
+    "global": 3.760838151251714e-05,
+    "near": 0.0013105402007795631
+  },
+  "NASA_USM3D": {
+    "CD": 0.02995,
+    "CL": 0.54239,
+    "CM_y": -0.06249
+  }
+}

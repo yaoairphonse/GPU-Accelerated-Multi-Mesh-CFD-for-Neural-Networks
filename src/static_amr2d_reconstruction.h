@@ -22,6 +22,27 @@ AMR_RECON_HD inline double amr_limiter(double center,double lower,double upper,d
   if(delta<0&&center+delta<lower)return (lower-center)/delta;
   return 1;
 }
+AMR_RECON_HD inline double amr_wall_pressure_value(int spatial_order,int reconstruction,
+                                                    double probe_blend,const double* primitive,
+                                                    const double* slopes,size_t n,size_t wall_id,
+                                                    const AmrCell2D& cell,const WallFragment2D& wall,
+                                                    const AmrWallPressureSample2D* samples) {
+  const size_t owner=wall.owner_cell;
+  const double center=primitive[3*n+owner];
+  const double baseline=spatial_order==2
+    ?amr_point_value(primitive,slopes,n,3,owner,cell,amr_wall_x(wall),amr_wall_y(wall)):center;
+  if(reconstruction!=WALL_PRESSURE_NORMAL_PROBE||!(probe_blend>0)||!samples)return baseline;
+  const auto sample=samples[wall_id];
+  if(sample.first<0||sample.second<0||sample.first==sample.second||
+     !(sample.first_distance>0)||!(sample.second_distance>sample.first_distance))return baseline;
+  const double p1=primitive[3*n+static_cast<size_t>(sample.first)];
+  const double p2=primitive[3*n+static_cast<size_t>(sample.second)];
+  const double denominator=sample.second_distance-sample.first_distance;
+  const double extrapolated=p1-sample.first_distance*(p2-p1)/denominator;
+  double candidate=baseline+probe_blend*(extrapolated-baseline);
+  if(!amr_vis_finite(candidate)||!(candidate>.1*center)||candidate>10*center)candidate=baseline;
+  return candidate;
+}
 #undef AMR_RECON_HD
 }
 #endif

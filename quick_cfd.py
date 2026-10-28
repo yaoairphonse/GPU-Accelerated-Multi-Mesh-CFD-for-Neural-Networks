@@ -103,13 +103,14 @@ def run_one(exe, config, label, geometry, folder, name, mesh_only=False):
     if result.get('spatial_order',1)!=expected_order or result.get('convergence_metric','all_loads')!=expected_metric:
         raise RuntimeError(f'{label} executable did not honor requested spatial order or convergence metric; rebuild the solver')
     result['mesh_workflow']='cartesian_amr_2d'
-    pseudo=(config['solver']['preconditioning']!='none' or config['solver']['local_pseudo_time'] or config['solver']['adaptive_cfl']['enabled'])
+    pseudo=(config['solver'].get('integrator','rk3')=='dplur' or config['solver']['preconditioning']!='none' or config['solver']['local_pseudo_time'] or config['solver']['adaptive_cfl']['enabled'])
     result.update(process_seconds=wall,returncode=process.returncode,profile=label,
                   time_kind='pseudo' if pseudo else 'physical',
+                  integrator=config['solver'].get('integrator','rk3'),
                   preconditioning=config['solver']['preconditioning'],
                   physical_time_seconds=(result['physical_time']*cfg.scales(config)['time'] if not pseudo else None))
     if result['time_kind']=='pseudo':
-        result['pseudo_time_star']=result['physical_time']
+        result['pseudo_time_star']=result.get('pseudo_iteration',result['physical_time'])
     result['gpu']=json.loads(Path(str(prefix)+'.gpu.json').read_text())
     if mesh_only:
         out=folder/'output';out.mkdir()

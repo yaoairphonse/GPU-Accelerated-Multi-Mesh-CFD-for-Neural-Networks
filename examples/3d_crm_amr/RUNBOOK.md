@@ -121,15 +121,24 @@ closed wall.  It is not valid between changed optimization geometries.
 
 The retained case is Mach 0.85, alpha 2.5 degrees, Re 5M,
 `mu-star=1.7e-7`, full-model reference area 7.8185104, moment reference
-(4.8074692, 0, 0.6451777), and 50% second-order mean-flow reconstruction.  The
-long 5,000-update assessment used DP-LUR CFL 4, five sweeps, block coupling,
-and the bounded first-order SA face option.  All are pseudo-time settings, not
-a physical time step.
+(4.8074692, 0, 0.6451777), and 50% second-order mean-flow reconstruction. The
+trajectory through 10,700 updates used DP-LUR CFL 4, five sweeps, block
+coupling, and the bounded first-order SA face option. A final 1,200-update
+continuation used CFL 12 after a matched CFL 4/6/8/12 sweep. All are
+pseudo-time settings, not a physical time step.
 
 Every continuation writes to a new directory.  Preserve `state.bin`,
 `history.csv`, `result.json`, `method.json`, and `surface.csv` together.  A
 state without its mesh manifest and method settings is not a reproducible
-checkpoint.
+checkpoint. For diagnostic or plotting-only continuations, use
+`--write-state 0` and/or `--write-surface 0` to avoid unnecessary multi-GB
+files.
+
+Use `--face-budget-audit 1` on a short matched continuation to write
+`face_budget.csv` and `wall_load_budget.csv`. The former separates procedural
+block interiors, same-level interfaces, 2:1 interfaces, stored cut faces, far
+field, wall, and SA source. The latter bins pressure and viscous CD/CL/CM
+contributions in x and y. Audit-on and audit-off states must match exactly.
 
 ## 7. Post-processing
 
@@ -156,8 +165,10 @@ aerodynamic convergence.  Require:
 - pressure/viscous force split stable;
 - Cp sections and integrated loads stable across at least two mesh levels.
 
-After 5,000 cumulative outer iterations, the 4,000–5,000 window average reaches $C_L / C_D / C_M = 0.523661 / 0.026297 / -0.024508$ against NASA USM3D reference values of $0.54239 / 0.02995 / -0.06249$ (4,500–5,000 window: $0.514545 / 0.025687 / -0.012119$; iteration-5,000 state: $0.511187 / 0.026104 / -0.017449$). Global mean/SA residual maxima drop to $6.99\times 10^{-5} / 3.28\times 10^{-4}$ (near-field $0.00216 / 0.01149$), with wing surface $C_p$ RMSE at $0.10034$. Because these are local pseudo-time iterations and pitching moment still oscillates over the final window, the checkpoint is treated as an active development state rather than a steady converged solution.
+At 11,900 cumulative updates, the saved endpoint is $C_D/C_L/C_M = 0.029967/0.572087/-0.041837$ versus NASA $0.02995/0.54239/-0.06249$. Endpoint differences are +0.057%, +5.475%, and +33.05%; global and near-body maximum residuals are $3.76\times10^{-5}$ and $1.31\times10^{-3}$.
+
+The endpoint alone is misleading because the trajectory still moves. A full observed low-to-low cycle over cumulative iterations 6,550–10,200 averages $C_D/C_L/C_M = 0.028936/0.565420/-0.052798$, corresponding to -3.385%, +4.246%, and +15.509% versus NASA. These are steady pseudo-iteration diagnostics, not a physical-time average or a validation result. The latest 1,200-step CFL-12 segment took 549.22 s on an RTX 4090.
 
 ## 9. Next grid refinement
 
-Avoid uniform far-field refinement. Future 30–40M cell grids should reduce per-cell GPU memory and concentrate refinement along the upper-wing shock, leading/trailing edges, wing-body junction, wing tip, and near wake.
+Avoid uniform far-field refinement. Use the new face and sectional load budgets to localize the remaining low-frequency mode. If damping cannot produce a fixed point, develop a true physical-time dual-time path before calling any average a URANS result. Future 30–40M cell grids should reduce per-cell GPU memory and concentrate refinement along the upper-wing shock, leading/trailing edges, wing-body junction, wing tip, and near wake.

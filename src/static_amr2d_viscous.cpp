@@ -31,6 +31,53 @@ bool visible(const StaticAmrMesh2D& m,double x,double y,const AmrCell2D& cell){
   return true;
 }
 }
+bool static_amr2d_wall_pressure_ready(const StaticAmrMesh2D& m,const Params2D& p){
+  const bool valid_mode=p.wall_pressure_reconstruction==WALL_PRESSURE_CENTROID||
+                        p.wall_pressure_reconstruction==WALL_PRESSURE_NORMAL_PROBE;
+  const bool valid_values=std::isfinite(p.wall_pressure_probe_blend)&&p.wall_pressure_probe_blend>=0&&
+    p.wall_pressure_probe_blend<=1&&std::isfinite(p.wall_pressure_probe_distance1)&&
+    std::isfinite(p.wall_pressure_probe_distance2)&&p.wall_pressure_probe_distance1>0&&
+    p.wall_pressure_probe_distance2>p.wall_pressure_probe_distance1;
+  return valid_mode&&valid_values&&(p.wall_pressure_reconstruction==WALL_PRESSURE_CENTROID||
+    m.wall_pressure_samples.size()==m.walls.size());
+}
+int static_amr2d_prepare_wall_pressure(StaticAmrMesh2D* mesh,const Params2D& p,std::string* error){
+  if(!mesh)return failed(error,"null wall-pressure mesh");
+  auto& m=*mesh;m.wall_pressure_samples.clear();
+  if(p.wall_pressure_reconstruction==WALL_PRESSURE_CENTROID){
+    return static_amr2d_wall_pressure_ready(m,p)?0:failed(error,"invalid wall-pressure reconstruction controls");
+  }
+  if(p.wall_pressure_reconstruction!=WALL_PRESSURE_NORMAL_PROBE||
+     !std::isfinite(p.wall_pressure_probe_blend)||p.wall_pressure_probe_blend<0||p.wall_pressure_probe_blend>1||
+     !std::isfinite(p.wall_pressure_probe_distance1)||!std::isfinite(p.wall_pressure_probe_distance2)||
+     !(p.wall_pressure_probe_distance1>0)||!(p.wall_pressure_probe_distance2>p.wall_pressure_probe_distance1))
+    return failed(error,"invalid wall-pressure reconstruction controls");
+  const size_t n=m.cells.size();m.wall_pressure_samples.reserve(m.walls.size());
+  struct Candidate {int cell;double distance,score1,score2;};
+  for(size_t wall_id=0;wall_id<m.walls.size();++wall_id){const auto& wall=m.walls[wall_id];
+    const double x=.5*(wall.x0+wall.x1),y=.5*(wall.y0+wall.y1);const auto& owner=m.cells[wall.owner_cell];
+    const double h=std::min(owner.x1-owner.x0,owner.y1-owner.y0),target1=p.wall_pressure_probe_distance1*h,target2=p.wall_pressure_probe_distance2*h;
+    std::queue<std::pair<int,int>> todo;std::vector<bool> visited(n,false);std::vector<Candidate> candidates;
+    todo.push({static_cast<int>(wall.owner_cell),0});visited[wall.owner_cell]=true;
+    while(!todo.empty()){const auto [cell_id,depth]=todo.front();todo.pop();const auto& cell=m.cells[cell_id];
+      const double dx=x-cell.cx,dy=y-cell.cy,distance=dx*wall.nx+dy*wall.ny,lateral=-dx*wall.ny+dy*wall.nx;
+      if(distance>1e-10*h&&visible(m,x,y,cell))candidates.push_back({cell_id,distance,(distance-target1)*(distance-target1)+4*lateral*lateral,(distance-target2)*(distance-target2)+4*lateral*lateral});
+      if(depth==8)continue;
+      for(size_t pos=m.face_offsets[cell_id];pos<m.face_offsets[cell_id+1];++pos){const auto& face=m.faces[m.cell_faces[pos]];const int other=face.left==cell_id?face.right:face.left;
+        if(other>=0&&!visited[other]){visited[other]=true;todo.push({other,depth+1});}}
+    }
+    std::sort(candidates.begin(),candidates.end(),[](const Candidate& a,const Candidate& b){return a.score1<b.score1;});
+    int first=-1,second=-1;double d1=0,d2=0,best=INFINITY;
+    const size_t first_limit=std::min<size_t>(candidates.size(),16);
+    for(size_t a=0;a<first_limit;++a)for(const auto& b:candidates){
+      if(b.cell==candidates[a].cell||b.distance<=candidates[a].distance+.05*h)continue;
+      const double score=candidates[a].score1+b.score2;if(score<best){best=score;first=candidates[a].cell;second=b.cell;d1=candidates[a].distance;d2=b.distance;}
+    }
+    if(first<0||second<0)return failed(error,"no distinct visible normal-pressure donors within eight face rings at wall "+std::to_string(wall_id));
+    m.wall_pressure_samples.push_back({first,second,d1,d2});
+  }
+  return static_amr2d_wall_pressure_ready(m,p)?0:failed(error,"incomplete wall-pressure donor table");
+}
 bool static_amr2d_viscous_ready(const StaticAmrMesh2D& m){
   if(m.transport.model==AMR_MODEL_EULER)for(const auto& b:m.boundaries)if(b.kind==AMR_BC_NOSLIP)return false;
   return (!m.transport.sa_model||m.viscous.wall_distance.size()==m.cells.size())&&amr_transport_valid(m.transport)&&(m.transport.model==AMR_MODEL_EULER||
@@ -39,6 +86,7 @@ bool static_amr2d_viscous_ready(const StaticAmrMesh2D& m){
 int static_amr2d_prepare_viscous(StaticAmrMesh2D* mesh,const Params2D& p,std::string* error){
   if(!mesh)return failed(error,"null viscous mesh");
   auto& m=*mesh;m.viscous=AmrViscousTable2D{};
+  if(static_amr2d_prepare_wall_pressure(mesh,p,error))return 1;
   if(!amr_transport_valid(m.transport))return failed(error,"invalid laminar transport parameters");
   if(m.transport.model==AMR_MODEL_EULER)return static_amr2d_viscous_ready(m)?0:failed(error,"no-slip wall requires laminar model");
   const size_t n=m.cells.size();auto& table=m.viscous;table.offsets.push_back(0);

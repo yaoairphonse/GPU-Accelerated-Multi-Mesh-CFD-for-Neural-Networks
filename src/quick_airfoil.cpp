@@ -1,5 +1,7 @@
 // Reusable bounded-time static cut-cell benchmark; physical scaling lives in runner manifest.
 #include "static_amr2d_binary.h"
+#include "static_amr2d_dplur.h"
+#include "static_amr2d_diagnostics.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -22,10 +24,16 @@ int main(int argc,char**argv)try{
   if(key=="box"){AmrBox2D box;if(!(row>>box.x0>>box.x1>>box.y0>>box.y1>>box.level))return 2;boxes.push_back(box);}
   else{if(!(row>>value))return 2;cfg[key]=value;}}
  const auto number=[&](const char*key){return std::stod(cfg.at(key));};
- const std::string name=cfg.at("name"),prefix=args["--out"],mode=cfg.at("mode"),backend=cfg.at("backend"),mesh_preset=cfg.at("mesh_preset"),viscosity=cfg.at("viscosity"),turbulence=cfg.at("turbulence"),sa_layout=cfg.at("sa_layout");
+ const std::string name=cfg.at("name"),prefix=args["--out"],mode=cfg.at("mode"),backend=cfg.at("backend"),mesh_preset=cfg.at("mesh_preset"),viscosity=cfg.at("viscosity"),turbulence=cfg.at("turbulence"),sa_layout=cfg.at("sa_layout"),integrator=cfg.count("integrator")?cfg.at("integrator"):"rk3";
  const double stop_time=number("stop_time"),budget=number("budget"),mu=number("mu_star"),mach=number("mach"),aoa=number("aoa"),gamma=number("gamma");
  const bool events=number("events")!=0;
- if((mode!="steady"&&mode!="time"&&mode!="mesh"&&mode!="smoke"&&mode!="rest")||(backend!="cpu"&&backend!="cuda")||(viscosity!="constant"&&viscosity!="sutherland")||(turbulence!="none"&&turbulence!="sa-neg")||!std::isfinite(stop_time)||stop_time<=0||budget<2||!std::isfinite(mu)||mu<=0||!(mach>0)||!(gamma>1))return 2;
+ if((mode!="steady"&&mode!="time"&&mode!="mesh"&&mode!="smoke"&&mode!="rest")||(backend!="cpu"&&backend!="cuda")||(integrator!="rk3"&&integrator!="dplur")||(viscosity!="constant"&&viscosity!="sutherland")||(turbulence!="none"&&turbulence!="sa-neg")||!std::isfinite(stop_time)||stop_time<=0||budget<2||!std::isfinite(mu)||mu<=0||!(mach>0)||!(gamma>1))return 2;
+ const bool use_dplur=integrator=="dplur";
+ StaticAmrDplurOptions2D dplur;
+ if(use_dplur){dplur.cfl=number("dplur_cfl");dplur.sweeps=static_cast<int>(number("dplur_sweeps"));dplur.omega=number("dplur_omega");dplur.block_coupling=number("dplur_block")!=0;
+  if(backend!="cpu"||mode!="steady"||!(dplur.cfl>0)||dplur.sweeps<1||dplur.sweeps>50||!(dplur.omega>0&&dplur.omega<=1)){std::cerr<<"2D DP-LUR currently requires a steady CPU case and valid controls\n";return 2;}}
+ const long dplur_max_iterations=use_dplur?static_cast<long>(number("dplur_iterations")):0;
+ const long dplur_check=use_dplur?static_cast<long>(number("dplur_check")):0;
  std::filesystem::create_directories(std::filesystem::path(prefix).parent_path());
  const auto begin=std::chrono::steady_clock::now();const auto elapsed=[&](){return std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count();};
  std::vector<double>x,y;std::vector<int>patches;std::string line,error;
@@ -35,11 +43,16 @@ int main(int argc,char**argv)try{
  StaticAmrOptions2D options;options.nx=static_cast<int>(number("nx"));options.ny=static_cast<int>(number("ny"));options.levels=static_cast<int>(number("levels"));options.buffer=static_cast<int>(number("buffer"));options.xmin=number("xmin");options.xmax=number("xmax");options.ymin=number("ymin");options.ymax=number("ymax");options.max_cells=static_cast<size_t>(number("max_cells"));options.agglomerate_small=true;options.boxes=boxes;
  const double wall_dx=(options.xmax-options.xmin)/options.nx/(1<<options.levels),wall_dy=(options.ymax-options.ymin)/options.ny/(1<<options.levels);
  Params2D p=params2d_default();p.gamma=gamma;p.cfl=number("cfl");p.dt_fixed=number("fixed_dt");p.limiter=LIM_FIRST_ORDER;p.amr_spatial_order=cfg.count("spatial_order")?static_cast<int>(number("spatial_order")):1;p.time_integrator=TIME_SSP_RK3;p.flux=cfg.at("flux")=="hllc"?FLUX_HLLC:FLUX_AUSMPUP;
+ p.wall_pressure_reconstruction=cfg.count("wall_pressure_reconstruction")&&cfg.at("wall_pressure_reconstruction")=="normal-probe"?WALL_PRESSURE_NORMAL_PROBE:WALL_PRESSURE_CENTROID;
+ p.wall_pressure_probe_blend=cfg.count("wall_pressure_probe_blend")?number("wall_pressure_probe_blend"):0;
+ p.wall_pressure_probe_distance1=cfg.count("wall_pressure_probe_distance1")?number("wall_pressure_probe_distance1"):1.5;
+ p.wall_pressure_probe_distance2=cfg.count("wall_pressure_probe_distance2")?number("wall_pressure_probe_distance2"):2.5;
  p.low_mach_preconditioning=cfg.count("preconditioning")&&cfg.at("preconditioning")=="turkel";p.low_mach_reference=mach;
  p.local_pseudo_time=cfg.count("local_pseudo_time")&&number("local_pseudo_time")!=0;
  const bool adaptive=cfg.count("adaptive_cfl")&&number("adaptive_cfl")!=0;
  const double cflmin=adaptive?number("cfl_min"):p.cfl,cflmax=adaptive?number("cfl_max"):p.cfl;
  if((p.local_pseudo_time||adaptive)&&(mode=="time"||p.dt_fixed>0)){std::cerr<<"local/adaptive stepping requires steady pseudo-time\n";return 2;}
+ if(use_dplur&&(p.local_pseudo_time||adaptive||p.dt_fixed>0)){std::cerr<<"DP-LUR owns local pseudo-time; disable explicit local/adaptive stepping and fixed dt\n";return 2;}
  if(cfg.count("mach_floor"))p.low_mach_floor=number("mach_floor");
  if(p.low_mach_preconditioning&&(mode=="time"||p.dt_fixed>0||!(p.low_mach_floor>0&&p.low_mach_floor<=1))){std::cerr<<"Turkel preconditioning requires steady pseudo-time and automatic CFL\n";return 2;}
  const double alpha=aoa*std::acos(-1.)/180,cs=std::cos(alpha),sn=std::sin(alpha),qinf=.5*mach*mach;
@@ -78,11 +91,13 @@ int main(int argc,char**argv)try{
  std::ofstream history(prefix+".history.csv");history<<std::setprecision(17)<<"time,steps,rejected,elapsed,res_rho,res_mx,res_my,res_E,res_sa,Cl,Cd,Cm,delta_Cl,delta_Cd,delta_Cm,delta_Cp_rms,hold\n";
  double cpu_advance=0,previous_raw=INFINITY;long previous_rejected=0;
  std::ofstream cflhistory(prefix+".cfl.csv");cflhistory<<"pseudo_time,steps,cfl,raw_max,rejected\n";
- while(mode!="mesh"&&elapsed()<budget-1&&state.time<stop_time){
+ while(mode!="mesh"&&elapsed()<budget-1&&(use_dplur?state.steps<dplur_max_iterations:state.time<stop_time)){
   int status=0;
-  if(raw){status=static_amr_gpu_advance(raw,target,50000000,&state,&error,std::max(.001,budget-1-elapsed()));if(static_amr_gpu_download(raw,&state,&error))return 1;}
+  if(use_dplur){dplur.iterations=std::min(dplur_check,dplur_max_iterations-state.steps);dplur.budget_seconds=std::max(.001,budget-1-elapsed());StaticAmrDplurReport2D dplur_report;
+    auto t=std::chrono::steady_clock::now();status=static_amr2d_run_dplur(mesh,p,dplur,&state,&dplur_report,&error);cpu_advance+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();dplur.cfl=dplur_report.final_cfl;}
+  else if(raw){status=static_amr_gpu_advance(raw,target,50000000,&state,&error,std::max(.001,budget-1-elapsed()));if(static_amr_gpu_download(raw,&state,&error))return 1;}
   else{auto t=std::chrono::steady_clock::now();status=static_amr2d_run(mesh,p,target,50000000,&state,&error);cpu_advance+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();}
-  if(status==1||(state.rejected&&!p.local_pseudo_time)){std::cerr<<"flow: "<<error<<" rejected="<<state.rejected<<'\n';failed=true;reason="admissibility-or-advance-failure";break;}
+  if(status==1||(!use_dplur&&state.rejected&&!p.local_pseudo_time)){std::cerr<<"flow: "<<error<<" rejected="<<state.rejected<<'\n';failed=true;reason="admissibility-or-advance-failure";break;}
   std::vector<double>rhs;if(static_amr2d_rhs(mesh,p,state.u,&rhs))return 1;
   std::array<long double,5>sum={};long double volume=0;bool positive=true;
   for(size_t k=0;k<n;++k){const double rho=state.u[k],pressure=(p.gamma-1)*(state.u[3*n+k]-.5*(state.u[n+k]*state.u[n+k]+state.u[2*n+k]*state.u[2*n+k])/rho);positive=positive&&std::isfinite(rho)&&rho>0&&std::isfinite(pressure)&&pressure>0;const auto&c=mesh.cells[k];if(c.cx<resxmin||c.cx>resxmax||c.cy<resymin||c.cy>resymax)continue;volume+=c.volume;for(int v=0;v<(mesh.transport.sa_model?5:4);++v)sum[v]+=c.volume*std::fabs(rhs[v*n+k]);}
@@ -103,7 +118,7 @@ int main(int argc,char**argv)try{
   std::cout<<"check "<<name<<" t="<<state.time<<" steps="<<state.steps<<" seconds="<<elapsed()<<" raw="<<*std::max_element(res.begin(),res.end())<<" Cl="<<cl<<" Cd="<<cd<<" Cm="<<cm<<" hold="<<hold<<'\n'<<std::flush;
   prevcl=cl;prevcd=cd;prevcm=cm;previous_wall_pressure=std::move(wall_pressure);previous=true;++checks;
   const double current_raw=*std::max_element(res.begin(),res.end());
-  cflhistory<<state.time<<','<<state.steps<<','<<p.cfl<<','<<current_raw<<','<<state.rejected<<'\n';cflhistory.flush();
+  cflhistory<<state.time<<','<<state.steps<<','<<(use_dplur?dplur.cfl:p.cfl)<<','<<current_raw<<','<<state.rejected<<'\n';cflhistory.flush();
   if(adaptive){
     if(current_raw>1.15*previous_raw||state.rejected>previous_rejected)p.cfl=std::max(cflmin,p.cfl*number("cfl_shrink"));
     else if(current_raw<.98*previous_raw)p.cfl=std::min(cflmax,p.cfl*number("cfl_growth"));
@@ -113,12 +128,15 @@ int main(int argc,char**argv)try{
   if(mode=="smoke"||mode=="rest"){reason="short-validation";break;}
   if(mode!="time"&&hold>=required_hold){converged=true;reason=convergence_metric=="cl_cm_cp"?"raw-residual-cl-cm-cp":"raw-residual-and-three-coefficients";break;}
   if(status==2)break;
-  if(state.time>=stop_time){reason="physical-time-cap";break;}target=checks==1?std::min(stop_time,period):std::min(stop_time,target+period);
+  if(use_dplur){if(state.steps>=dplur_max_iterations){reason="iteration-cap";break;}}
+  else {if(state.time>=stop_time){reason="physical-time-cap";break;}target=checks==1?std::min(stop_time,period):std::min(stop_time,target+period);}
  }
  if(!save(failed?"failed_last":"final")){std::cerr<<error;return 1;}
+ if(cfg.count("face_budget_audit")&&number("face_budget_audit")!=0){StaticAmrAuditOptions2D audit;audit.angle_radians=alpha;audit.dynamic_pressure=qinf;audit.reference_length=1;audit.moment_x=mxref;audit.moment_y=myref;
+  if(static_amr2d_write_budgets(mesh,p,state,audit,prefix,&error)){std::cerr<<error;return 1;}}
  auto stats=static_amr_gpu_stats(raw);if(static_amr_gpu_write_stats(stats,prefix+".gpu.json",io,&error))return 1;
  double rest_error=0;if(mode=="rest")for(size_t i=0;i<4*n;++i)rest_error=std::max(rest_error,std::fabs(initial[i]-state.u[i]));
- std::ofstream out(prefix+".result.json");out<<std::setprecision(17)<<"{\"case\":"<<std::quoted(name)<<",\"mode\":"<<std::quoted(mode)<<",\"converged\":"<<(converged?"true":"false")<<",\"failed\":"<<(failed?"true":"false")<<",\"stop_reason\":"<<std::quoted(reason)<<",\"elapsed_seconds\":"<<elapsed()<<",\"mesh_setup_seconds\":"<<mesh_seconds<<",\"cpu_advance_seconds\":"<<cpu_advance<<",\"physical_time\":"<<state.time<<",\"steps\":"<<state.steps<<",\"rejected\":"<<state.rejected<<",\"fluid_control_volumes\":"<<n<<",\"background_leaves\":"<<mesh.background_leaves<<",\"split_leaves\":"<<mesh.split_leaves<<",\"sa_layout\":"<<std::quoted(sa_layout)<<",\"stop_time_cap\":"<<stop_time<<",\"turbulence_model\":"<<std::quoted(turbulence)<<",\"mesh_preset\":"<<std::quoted(mesh_preset)<<",\"viscosity_law\":"<<std::quoted(viscosity)<<",\"wall_dx\":"<<wall_dx<<",\"wall_dy\":"<<wall_dy<<",\"Mach\":"<<mach<<",\"AOA_degrees\":"<<aoa<<",\"mu_star\":"<<mu<<",\"kappa\":0,\"Cl\":"<<cl<<",\"Cd\":"<<cd<<",\"Cm\":"<<cm<<",\"moment_reference\":["<<mxref<<","<<myref<<"],\"moment_sign\":\"CCW-positive\",\"raw_residual\":[";
- for(int v=0;v<(mesh.transport.sa_model?5:4);++v){if(v)out<<',';out<<res[v];}out<<"],\"spatial_order\":"<<p.amr_spatial_order<<",\"convergence_metric\":"<<std::quoted(convergence_metric)<<",\"cp_change_tolerance\":"<<cp_tol<<",\"checks\":"<<checks<<",\"hold\":"<<hold<<",\"rest_linf\":"<<rest_error<<",\"area_error\":"<<areaerror<<",\"wall_length_error\":"<<wallerror<<",\"closure_relative_linf\":"<<maxclosure<<"}\n";
+ std::ofstream out(prefix+".result.json");out<<std::setprecision(17)<<"{\"case\":"<<std::quoted(name)<<",\"mode\":"<<std::quoted(mode)<<",\"integrator\":"<<std::quoted(integrator)<<",\"dplur_CFL\":"<<(use_dplur?dplur.cfl:0)<<",\"dplur_sweeps\":"<<(use_dplur?dplur.sweeps:0)<<",\"dplur_omega\":"<<(use_dplur?dplur.omega:0)<<",\"dplur_block_coupling\":"<<(use_dplur&&dplur.block_coupling?"true":"false")<<",\"converged\":"<<(converged?"true":"false")<<",\"failed\":"<<(failed?"true":"false")<<",\"stop_reason\":"<<std::quoted(reason)<<",\"elapsed_seconds\":"<<elapsed()<<",\"mesh_setup_seconds\":"<<mesh_seconds<<",\"cpu_advance_seconds\":"<<cpu_advance<<",\"physical_time\":"<<(use_dplur?0:state.time)<<",\"pseudo_iteration\":"<<(use_dplur?state.steps:0)<<",\"steps\":"<<state.steps<<",\"rejected\":"<<state.rejected<<",\"fluid_control_volumes\":"<<n<<",\"background_leaves\":"<<mesh.background_leaves<<",\"split_leaves\":"<<mesh.split_leaves<<",\"sa_layout\":"<<std::quoted(sa_layout)<<",\"stop_time_cap\":"<<stop_time<<",\"turbulence_model\":"<<std::quoted(turbulence)<<",\"mesh_preset\":"<<std::quoted(mesh_preset)<<",\"viscosity_law\":"<<std::quoted(viscosity)<<",\"wall_dx\":"<<wall_dx<<",\"wall_dy\":"<<wall_dy<<",\"Mach\":"<<mach<<",\"AOA_degrees\":"<<aoa<<",\"mu_star\":"<<mu<<",\"kappa\":0,\"Cl\":"<<cl<<",\"Cd\":"<<cd<<",\"Cm\":"<<cm<<",\"moment_reference\":["<<mxref<<","<<myref<<"],\"moment_sign\":\"CCW-positive\",\"raw_residual\":[";
+ for(int v=0;v<(mesh.transport.sa_model?5:4);++v){if(v)out<<',';out<<res[v];}out<<"],\"spatial_order\":"<<p.amr_spatial_order<<",\"wall_pressure_reconstruction\":"<<std::quoted(p.wall_pressure_reconstruction==WALL_PRESSURE_NORMAL_PROBE?"normal-probe":"centroid")<<",\"wall_pressure_probe_scope\":\"pressure-only\",\"wall_pressure_probe_blend\":"<<p.wall_pressure_probe_blend<<",\"wall_pressure_probe_distances_h\":["<<p.wall_pressure_probe_distance1<<','<<p.wall_pressure_probe_distance2<<"],\"convergence_metric\":"<<std::quoted(convergence_metric)<<",\"cp_change_tolerance\":"<<cp_tol<<",\"checks\":"<<checks<<",\"hold\":"<<hold<<",\"rest_linf\":"<<rest_error<<",\"area_error\":"<<areaerror<<",\"wall_length_error\":"<<wallerror<<",\"closure_relative_linf\":"<<maxclosure<<"}\n";
  return failed||(mode=="rest"&&rest_error>2e-11)?1:0;
 } catch(const std::exception& e){std::cerr<<"configuration/runtime error: "<<e.what()<<"\n";return 2;}

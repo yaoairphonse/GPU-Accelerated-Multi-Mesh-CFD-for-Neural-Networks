@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quick CFD — L0/L1/L2 Current Progress</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: #0d1b2a;
+      --panel2: #11263a;
+      --text: #edf5ff;
+      --muted: #9fb3c8;
+      --line: #27445f;
+      --l0: #55d6be;
+      --l1: #ffd166;
+      --l2: #ff7b72;
+      --blue: #69b7ff;
+      --good: #6ee7a8;
+      --warn: #ffd166;
+      --open: #ff8f86;
+      --shadow: 0 18px 45px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(45,124,180,.25), transparent 34rem),
+        radial-gradient(circle at 95% 20%, rgba(85,214,190,.12), transparent 30rem),
+        var(--bg);
+      font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: #8fcbff; }
+    code { color: #b9e2ff; }
+    .wrap { width: min(1160px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 70px 0 34px; }
+    .eyebrow { color: var(--blue); font-weight: 750; letter-spacing: .11em; text-transform: uppercase; font-size: .78rem; }
+    h1 { margin: 8px 0 12px; max-width: 900px; font-size: clamp(2.2rem, 6vw, 4.8rem); line-height: 1.02; letter-spacing: -.045em; }
+    h2 { margin: 0 0 15px; font-size: clamp(1.45rem, 3vw, 2rem); letter-spacing: -.025em; }
+    h3 { margin: 0 0 9px; font-size: 1.15rem; }
+    p { margin: 0 0 14px; }
+    .lead { max-width: 900px; color: #c8d8e8; font-size: 1.12rem; }
+    .warning {
+      margin-top: 24px; padding: 14px 17px; max-width: 900px;
+      border: 1px solid rgba(255,209,102,.45); border-left: 4px solid var(--warn);
+      border-radius: 10px; background: rgba(255,209,102,.07); color: #f8eac2;
+    }
+    nav { position: sticky; top: 0; z-index: 5; backdrop-filter: blur(14px); background: rgba(7,17,31,.84); border-block: 1px solid rgba(80,116,148,.35); }
+    nav .wrap { display: flex; gap: 8px; overflow-x: auto; padding-block: 10px; }
+    nav a { white-space: nowrap; text-decoration: none; padding: 7px 12px; border-radius: 999px; color: #c6d9ea; }
+    nav a:hover { background: #17314a; color: white; }
+    main { padding: 34px 0 80px; }
+    section { margin: 0 0 58px; scroll-margin-top: 70px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .card { position: relative; overflow: hidden; padding: 23px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, rgba(17,38,58,.96), rgba(10,26,41,.96)); box-shadow: var(--shadow); }
+    .card::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--accent); }
+    .level { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .level strong { color: var(--accent); font-size: 1.8rem; letter-spacing: -.04em; }
+    .badge { padding: 4px 9px; border: 1px solid currentColor; border-radius: 999px; color: var(--accent); font-size: .76rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .l0 { --accent: var(--l0); }
+    .l1 { --accent: var(--l1); }
+    .l2 { --accent: var(--l2); }
+    .muted { color: var(--muted); }
+    .card ul, .panel ul, .panel ol { margin: 12px 0 0; padding-left: 20px; }
+    .card li, .panel li { margin: 6px 0; }
+    .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 12px; }
+    .flow .node { min-height: 116px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .flow .arrow { color: #7293ae; font-size: 1.6rem; }
+    .panel { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: rgba(13,27,42,.88); box-shadow: var(--shadow); }
+    .split { display: grid; grid-template-columns: 1.1fr .9fr; gap: 18px; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #9ec9ee; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+    tr:last-child td { border-bottom: 0; }
+    .metric { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .metric div { padding: 14px; border-radius: 12px; background: #081826; border: 1px solid #1f3a52; }
+    .metric b { display: block; color: white; font-size: 1.15rem; }
+    .metric span { color: var(--muted); font-size: .8rem; }
+    .yes { color: var(--good); font-weight: 750; }
+    .conditional { color: var(--warn); font-weight: 750; }
+    .no { color: var(--open); font-weight: 750; }
+    .decision { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .decision article { padding: 18px; border-radius: 14px; background: #0a1a29; border: 1px solid var(--line); }
+    .callout { padding: 19px 21px; border-radius: 15px; background: linear-gradient(100deg, rgba(105,183,255,.12), rgba(85,214,190,.08)); border: 1px solid #315979; }
+    footer { padding: 28px 0 50px; color: var(--muted); border-top: 1px solid var(--line); }
+    @media (max-width: 850px) {
+      .grid, .split { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .flow .arrow { transform: rotate(90deg); justify-self: center; }
+    }
+    @media (max-width: 590px) {
+      .metric, .decision { grid-template-columns: 1fr; }
+      th, td { padding: 9px 7px; font-size: .86rem; }
+      .wrap { width: min(100% - 20px, 1160px); }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <div class="eyebrow">Quick CFD · status guide · 2026-10-28</div>
+    <h1>What works now, from L0 to L2</h1>
+    <p class="lead">A fast map of the project's verified foundation, usable trend-prediction path, and full-aircraft research path.</p>
+    <div class="warning"><strong>Terminology:</strong> L0/L1/L2 here are readiness layers. They are not the 2-D <code>LF1/LF2</code> mesh profiles and not CRM AMR level 9/10.</div>
+  </header>
+
+  <nav>
+    <div class="wrap">
+      <a href="#map">Map</a><a href="#l0">L0</a><a href="#l1">L1</a><a href="#l2">L2</a><a href="#decide">What should I use?</a><a href="#next">Next step</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="map">
+      <div class="grid">
+        <article class="card l0">
+          <div class="level"><strong>L0</strong><span class="badge">verified</span></div>
+          <h2>Numerical trust</h2>
+          <p class="muted">Does the implementation conserve, restart, stay positive, and agree across CPU and CUDA?</p>
+          <ul><li>Regression and smoke testing</li><li>Geometry and uniform-flow audits</li><li>CPU/CUDA parity</li></ul>
+        </article>
+        <article class="card l1">
+          <div class="level"><strong>L1</strong><span class="badge">conditional</span></div>
+          <h2>Fast trend data</h2>
+          <p class="muted">Can we generate inexpensive, useful aerodynamic trends for NNLCI and screening?</p>
+          <ul><li>2-D Cartesian cut-cell LF1/LF2</li><li>NACA4412 CL/CM/Cp gate passed</li><li>7.70 s CPU DP-LUR LF1 reference</li></ul>
+        </article>
+        <article class="card l2">
+          <div class="level"><strong>L2</strong><span class="badge">research</span></div>
+          <h2>Full 3-D aircraft</h2>
+          <p class="muted">Can we run full-aircraft tetra, hybrid, and Cartesian-AMR cases on the GPU?</p>
+          <ul><li>21.52M-control CRM AMR</li><li>Flow and Cp are available</li><li>Loads are still unconverged</li></ul>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>The dependency chain</h2>
+      <div class="flow">
+        <div class="node"><strong style="color:var(--l0)">L0</strong><br>Trust the discrete machinery and detect regressions.</div>
+        <div class="arrow">→</div>
+        <div class="node"><strong style="color:var(--l1)">L1</strong><br>Use the verified machinery for fast, bounded-scope trend data.</div>
+        <div class="arrow">→</div>
+        <div class="node"><strong style="color:var(--l2)">L2</strong><br>Extend to full-aircraft scale, then prove convergence and accuracy.</div>
+      </div>
+    </section>
+
+    <section id="l0">
+      <div class="split">
+        <div class="panel">
+          <h2><span style="color:var(--l0)">L0</span> — numerical trust layer</h2>
+          <p>L0 is the foundation, not an aerodynamic validation claim.</p>
+          <ul>
+            <li>3-D sphere conservation, positivity, restart, and CPU/CUDA regression pass.</li>
+            <li>Procedural CRM AMR geometry closure and uniform-flow preservation pass.</li>
+            <li>Fixed-step CPU/CUDA state differences are approximately machine precision.</li>
+            <li>Checkpoint reload, deterministic restart, and true-mesh plotting are retained.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Use L0 for</h3>
+          <p class="yes">Software verification and development gates</p>
+          <h3>Do not use L0 alone for</h3>
+          <p class="no">Claims that CRM CL, CD, or CM are accurate</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="l1">
+      <div class="panel">
+        <h2><span style="color:var(--l1)">L1</span> — fast NNLCI trend-data layer</h2>
+        <p>The strongest retained L1 evidence is NACA4412 at Mach 0.2 against a matched XFOIL numerical reference.</p>
+        <table>
+          <thead><tr><th>Profile</th><th>Controls</th><th>RTX 4090 process</th><th>CL difference</th><th>Cp RMS</th></tr></thead>
+          <tbody>
+            <tr><td>LF1</td><td>4,718</td><td>20.38 s</td><td>-1.55%</td><td>0.01282</td></tr>
+            <tr><td>LF2</td><td>9,517</td><td>33.42 s</td><td>-1.77%</td><td>0.01176</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:16px"><strong>CPU DP-LUR reference:</strong> LF1 reached the same stability gate in 1,900 pseudo-iterations and 7.70 s; LF2 used its lower locked CFL and reached it in 5,900 iterations and 48.25 s. CUDA DP-LUR is not implemented for 2-D yet.</p>
+        <div class="callout" style="margin-top:18px"><strong>Best current use:</strong> rapid CL, CM, and surface-Cp trends for similar attached 2-D airfoil cases. Drag, broad transonic behavior, separated flow, and experimental validation remain open.</div>
+      </div>
+    </section>
+
+    <section id="l2">
+      <div class="panel">
+        <h2><span style="color:var(--l2)">L2</span> — full 3-D aircraft layer</h2>
+        <p>The code supports explicit-face tetra/polyhedral/hybrid grids and procedural multi-block Cartesian AMR. The current headline case is the upper-wing-refined CRM AMR grid.</p>
+        <div class="metric">
+          <div><b>21,523,036</b><span>active controls</span></div>
+          <div><b>11,900</b><span>cumulative pseudo-iterations</span></div>
+          <div><b>9.15 min</b><span>latest 1,200-step CFL-12 continuation</span></div>
+        </div>
+        <table style="margin-top:18px">
+          <thead><tr><th>Quantity</th><th>11,900 endpoint</th><th>Full low-to-low cycle mean</th><th>NASA USM3D</th></tr></thead>
+          <tbody>
+            <tr><td>CL</td><td>0.572087</td><td>0.565420</td><td>0.54239</td></tr>
+            <tr><td>CD</td><td>0.029967</td><td>0.028936</td><td>0.02995</td></tr>
+            <tr><td>CM</td><td>-0.041837</td><td>-0.052798</td><td>-0.06249</td></tr>
+          </tbody>
+        </table>
+        <div class="warning"><strong>Interpretation:</strong> the endpoint is much closer, especially for CD and CL, but CM and near-body residual still fail the fixed-point/load-window gate. The cycle mean is a pseudo-iteration diagnostic, not a physical-time URANS average.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent options: implemented does not mean promoted</h2>
+      <div class="grid">
+        <article class="card l2"><h3>Pressure normal probe</h3><p>Stable and bounded, but changed wing Cp RMSE by only 0.018%.</p><p class="no">Rejected as the primary accuracy fix</p></article>
+        <article class="card l1"><h3>Bounded SA face scheme</h3><p>Reduced SA residual, but did not materially change the load trajectory.</p><p class="conditional">Retained as opt-in research</p></article>
+        <article class="card l1"><h3>Block DP-LUR neighbor action</h3><p>Verified Euler block action; about 10.4% more cost for only 1–2% residual improvement in the matched test.</p><p class="conditional">Retained as opt-in research</p></article>
+      </div>
+    </section>
+
+    <section id="decide">
+      <h2>What should I use today?</h2>
+      <div class="decision">
+        <article><h3>I changed solver code</h3><p>Run <span class="yes">L0</span> regression, conservation, restart, and CPU/CUDA checks first.</p></article>
+        <article><h3>I need fast NNLCI trend inputs</h3><p>Use <span class="conditional">L1 LF1/LF2</span> inside the tested 2-D attached-flow scope.</p></article>
+        <article><h3>I need a full-aircraft qualitative field</h3><p>Use <span class="conditional">L2 CRM AMR</span>, retain convergence warnings, and inspect Cp/shock behavior.</p></article>
+        <article><h3>I need validated full-aircraft loads</h3><p><span class="no">Not ready.</span> CRM load-window and CM convergence must be solved first.</p></article>
+      </div>
+    </section>
+
+    <section id="next">
+      <div class="panel">
+        <h2>The next L2 task</h2>
+        <ol>
+          <li>Use the implemented residual and load budgets by internal, same-level/2:1 interface, cut, wall, far-field, and SA-source family.</li>
+          <li>Track upper-wing shock position and sectional moment through the low-frequency cycle.</li>
+          <li>Determine whether steady damping can reach a fixed point; otherwise develop true physical-time dual time.</li>
+          <li>Port the verified 2-D DP-LUR reference to CUDA for NNLCI throughput.</li>
+          <li>Only then reduce memory and design a targeted 30–40M-control refinement.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="callout">
+      <strong>Detailed records:</strong>
+      <a href="STATUS.md">status</a> ·
+      <a href="MANUAL.md">manual</a> ·
+      <a href="../examples/README.md">examples and figures</a> ·
+      <a href="../examples/3d_crm_amr/RUNBOOK.md">CRM AMR runbook</a> ·
+      <a href="DEVELOPMENT_HISTORY.md">development history</a>
+    </section>
+  </main>
+
+  <footer><div class="wrap">Quick CFD L0/L1/L2 progress guide · generated from retained, reproducible project records · 2026-10-28</div></footer>
+</body>
+</html>
