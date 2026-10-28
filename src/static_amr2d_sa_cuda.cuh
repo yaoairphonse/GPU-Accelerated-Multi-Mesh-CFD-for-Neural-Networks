@@ -33,5 +33,6 @@ __global__ void sa_collect_kernel(Config cfg,Data d,double* rhs,bool base){
  for(size_t pos=d.offset[k];pos<d.offset[k+1];++pos){size_t q=d.face_ids[pos];net+=(d.faces[q].left==static_cast<int>(k)?1:-1)*d.sa_face_flux[q];spectral+=d.sa_face_coefficient[q];}
  for(size_t q=c.wall_begin;q<c.wall_begin+c.wall_count;++q){net-=d.sa_wall_flux[q];spectral+=d.sa_wall_coefficient[q];}
  rhs[4*cfg.n+k]=-net/c.volume+d.sa_source[k];if(!isfinite(rhs[4*cfg.n+k]))atomicOr(&d.control->bad,1);
- if(base){const double rate=2*spectral/(d.w[k]*c.volume)+d.sa_source_rate[k];if(rate>0)d.cell_dt[k]=fmin(d.cell_dt[k],cfg.transport.sa_cfl/rate);}
+ if(base){const double rate=2*spectral/(d.w[k]*c.volume)+d.sa_source_rate[k];d.sa_rate[k]=rate;
+   if(rate>0)d.cell_dt[k]=fmin(d.cell_dt[k],cfg.transport.sa_cfl/rate);}
 }

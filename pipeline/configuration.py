@@ -93,8 +93,8 @@ def validate(c):
     positive(dplur['omega'],'solver.dplur.omega',1)
     integer(dplur['maximum_iterations'],'solver.dplur.maximum_iterations',1,100000000)
     integer(dplur['check_interval'],'solver.dplur.check_interval',1,dplur['maximum_iterations'])
-    if s['integrator']=='dplur' and (s['backend']!='cpu' or s['mode']!='steady' or s['time_step']['mode']!='cfl'):
-        raise ValueError('the verified 2D DP-LUR reference path currently requires backend=cpu, mode=steady, and CFL time-step mode')
+    if s['integrator']=='dplur' and (s['mode']!='steady' or s['time_step']['mode']!='cfl'):
+        raise ValueError('2D DP-LUR requires mode=steady and CFL time-step mode')
     if s['preconditioning'] not in ['none', 'turkel']:
         raise ValueError('solver.preconditioning must be none|turkel')
     integer(s['spatial_order'], 'solver.spatial_order', 1, 2)

@@ -59,9 +59,9 @@ The configured gate requires the raw residual, CL/CM change, and wall-length-
 weighted Cp change to remain below their thresholds for five reports.  Passing
 this development gate does not validate skin-friction drag or transition.
 
-## 6. CPU DP-LUR reference
+## 6. CPU/CUDA DP-LUR
 
-The opt-in 2-D DP-LUR implementation is currently a CPU reference path.  It
+The opt-in 2-D DP-LUR implementation runs on CPU and CUDA. It
 uses the same mesh, residual, second-order reconstruction, Turkel
 preconditioning, SA-neg model, and convergence gate:
 
@@ -77,8 +77,11 @@ unvalidated.  Setting
 `output.audit_budgets=true` also writes per-face-family conservation and
 chordwise pressure/viscous load budgets next to the internal flow files.
 
-CUDA DP-LUR is not implemented for this 2-D path yet.  Use `case.json` and
-`run.sh` for the retained CUDA RK3 production path.
+For CUDA, use the repository-level
+`config/naca4412_m02_order2_dplur_cuda.json` with `quick_cfd.py`. The verified
+RTX 4090 CFL-0.5 runs reached the LF1/LF2 gates in 5,600/11,000 iterations and
+3.22/6.25 s process time. CFL 4 produced a non-decaying LF2 residual cycle and
+is not the portable default.
 
 ## 7. CPU/CUDA comparison
 

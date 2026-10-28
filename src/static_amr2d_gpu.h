@@ -5,7 +5,19 @@
 
 namespace cfd {
 struct StaticAmrGpu;
-struct AmrGpuOptions {int batch_trials=32;bool graph=true;bool fused=false;bool event_timing=false;bool sa_fused=false;};
+struct StaticAmrDplurOptions2D;
+struct StaticAmrDplurReport2D;
+struct AmrGpuOptions {
+  int batch_trials=32;
+  bool graph=true;
+  bool fused=false;
+  bool event_timing=false;
+  bool sa_fused=false;
+  bool dplur=false;
+  int dplur_sweeps=5;
+  double dplur_omega=.8;
+  bool dplur_block_coupling=true;
+};
 struct AmrGpuStats {
   uint64_t allocated_bytes=0,pinned_bytes=0,geometry_h2d_bytes=0,state_h2d_bytes=0;
   uint64_t control_h2d_bytes=0;
@@ -19,6 +31,12 @@ int static_amr_gpu_create(const StaticAmrMesh2D&,const Params2D&,const StaticAmr
 // advance updates host metadata, not host U; call download when a full snapshot is needed.
 // Returns 2 on optional wall-clock budget expiry, preserving a resumable accepted state.
 int static_amr_gpu_advance(StaticAmrGpu*,double tend,long maxsteps,StaticAmrState2D*,std::string*,double wall_budget_seconds=0);
+// Matrix-free steady DP-LUR on the persistent CUDA state.  The requested
+// sweep/relaxation settings must match those supplied when the session was
+// created; CFL, iteration count and budget may change between calls.
+int static_amr_gpu_run_dplur(StaticAmrGpu*,const StaticAmrDplurOptions2D&,
+                             StaticAmrState2D*,StaticAmrDplurReport2D*,
+                             std::string*);
 int static_amr_gpu_download(StaticAmrGpu*,StaticAmrState2D*,std::string*);
 int static_amr_gpu_set_cfl(StaticAmrGpu*,double,std::string*);
 AmrGpuStats static_amr_gpu_stats(const StaticAmrGpu*);

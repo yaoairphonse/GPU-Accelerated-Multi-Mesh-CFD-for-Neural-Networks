@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-28",
+  "hardware": "NVIDIA GeForce RTX 4090",
+  "method": {
+    "dimension": 2,
+    "mesh": "Cartesian quadtree AMR cut cell",
+    "integrator": "matrix-free block DP-LUR",
+    "backend": "CUDA Graph persistent state",
+    "spatial_order": 2,
+    "turbulence": "SA-neg",
+    "preconditioning": "Turkel",
+    "CFL": 0.5,
+    "sweeps": 5,
+    "omega": 0.8,
+    "block_coupling": true
+  },
+  "condition": {
+    "geometry": "NACA 4412 polygon",
+    "Mach": 0.2,
+    "AOA_degrees": 1.5,
+    "pressure_Pa": 101325.0,
+    "temperature_K": 288.15
+  },
+  "convergence_gate": "raw residual plus five stable CL/CM/Cp reports",
+  "cases": [
+    {
+      "profile": "LF1",
+      "control_volumes": 4718,
+      "pseudo_iterations": 5600,
+      "process_seconds": 3.219,
+      "gpu_advance_seconds": 2.812,
+      "rejected_updates": 0,
+      "converged": true,
+      "CL": 0.6607043622264927,
+      "CD": 0.006870671549013035,
+      "CM_ccw_positive": 0.10740361437131575,
+      "raw_residual": [5.393461043797708e-05, 5.7331280268153285e-06, 6.93498227033332e-06, 0.00013440314424856097, 0.006964704016669523]
+    },
+    {
+      "profile": "LF2",
+      "control_volumes": 9517,
+      "pseudo_iterations": 11000,
+      "process_seconds": 6.254,
+      "gpu_advance_seconds": 5.664,
+      "rejected_updates": 0,
+      "converged": true,
+      "CL": 0.6608995317464835,
+      "CD": 0.003068463967604727,
+      "CM_ccw_positive": 0.10678022900994315,
+      "raw_residual": [0.00020699375524309497, 3.860462201631369e-05, 1.117044204865095e-05, 0.0005207850778921719, 0.00885596674420426]
+    }
+  ],
+  "negative_control": {
+    "profile": "LF2",
+    "CFL": 4.0,
+    "pseudo_iterations": 50000,
+    "process_seconds": 29.273,
+    "rejected_updates": 0,
+    "converged": false,
+    "reason": "non-decaying mean-flow and SA residual cycle despite slowly changing loads"
+  },
+  "regression_tests": [
+    "uniform-flow preservation",
+    "pressure-perturbation damping",
+    "CPU/CUDA state agreement",
+    "20-step versus 10+10 persistent-session restart equivalence"
+  ],
+  "limitations": [
+    "XFOIL is a numerical reference, not experimental validation",
+    "rapid cut-cell viscous drag is not validated",
+    "timings are hardware and case specific"
+  ]
+}

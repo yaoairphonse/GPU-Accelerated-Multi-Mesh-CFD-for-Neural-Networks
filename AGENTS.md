@@ -112,6 +112,13 @@ For the retained NACA 4412 LF1 DP-LUR run, the expected neighborhood is about
 `CL/CD/CM = 0.6600/0.0068/+0.1073`. Investigate material deviations; do not
 hard-code these values as pass/fail results on a modified geometry.
 
+The full configurable path also supports persistent CUDA DP-LUR. Use
+`config/naca4412_m02_order2_dplur_cuda.json` with `quick_cfd.py`, or generate
+the equivalent input with `tools/cfd_case_builder.html`. The verified RTX 4090
+CFL-0.5 runs took 3.22/6.25 seconds for LF1/LF2 and passed the residual +
+CL/CM/Cp gate. Do not substitute CFL 4 for LF2: it produced a non-decaying
+residual cycle even though the loads appeared nearly stationary.
+
 Lift, pitching moment, and surface-pressure trends are the supported 2-D
 accuracy outputs. Drag is exported but the rapid cut-cell viscous drag is not
 yet an aerodynamic validation claim.
@@ -133,9 +140,11 @@ cmake --build build -j 8 --target quick_airfoil
 ctest --test-dir build --output-on-failure
 ```
 
-Run the same simple command with `--algorithm rk3`. Do not silently fall back
-from a requested CUDA run to CPU; report the unavailable device or build
-dependency clearly.
+Run the same simple command with `--algorithm rk3`. The simple interface keeps
+DP-LUR on CPU for maximum portability; select CUDA DP-LUR through the verified
+configuration or case builder described above. Do not silently fall back from
+a requested CUDA run to CPU; report the unavailable device or build dependency
+clearly.
 
 ## 6. Three-dimensional case routing
 

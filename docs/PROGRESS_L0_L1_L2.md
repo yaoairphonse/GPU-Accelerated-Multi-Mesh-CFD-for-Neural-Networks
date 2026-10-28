@@ -52,13 +52,13 @@ Both profiles passed the configured CL/CM/Cp stability gate.  They are useful
 for rapid qualitative studies, NNLCI input generation, and version-to-version
 comparisons within a similar tested regime.
 
-An opt-in CPU matrix-free block DP-LUR reference reaches the same LF1 gate in
-1,900 pseudo-iterations and 7.70 s, with CL/CD/CM =
-0.660046/0.006801/0.107250.  LF2 uses its own locked stable preset and reaches
-the gate in 5,900 pseudo-iterations and 48.25 s.  Uniform preservation,
-perturbation damping, deterministic restart, and face/load budget closure are
-regression tested.  CUDA DP-LUR has not yet been ported to 2-D; CUDA RK3 is
-currently faster for LF2.
+The matrix-free block DP-LUR path runs on CPU and CUDA. At the conservative
+CUDA CFL 0.5, LF1 reaches the gate in 5,600 pseudo-iterations and 3.22 s;
+LF2 reaches it in 11,000 iterations and 6.25 s. Their CL/CD/CM values are
+0.660704/0.006871/0.107404 and 0.660900/0.003068/0.106780. Uniform
+preservation, perturbation damping, CPU/CUDA agreement, deterministic restart,
+and face/load budget closure are regression tested. CFL 4 is not a portable
+LF2 setting because it produced a non-decaying residual cycle.
 
 Current limits:
 

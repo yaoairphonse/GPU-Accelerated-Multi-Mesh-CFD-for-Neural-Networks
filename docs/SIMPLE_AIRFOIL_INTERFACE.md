@@ -29,10 +29,14 @@ python3 simple_airfoil.py \
   --out output/simple_naca4412
 ```
 
-`rk3` selects the retained CUDA path.  `dplur` selects the new CPU reference
+`rk3` selects the retained CUDA path.  `dplur` selects the CPU reference
 path.  The nominal 4,700/9,500 selections map to LF1/LF2; the actual cut-cell
 count depends slightly on geometry and is always reported.  Geometry is
 normalized by a fixed one-metre reference chord in this simple interface.
+The underlying solver also supports CUDA DP-LUR through
+`config/naca4412_m02_order2_dplur_cuda.json` or the offline case builder; it is
+kept outside this deliberately minimal two-choice wrapper so the DP-LUR option
+continues to work on machines without CUDA.
 
 The main machine-readable result is `simple_summary.json`.  Normal field,
 surface, load, mesh, convergence-history, and HTML outputs remain available in

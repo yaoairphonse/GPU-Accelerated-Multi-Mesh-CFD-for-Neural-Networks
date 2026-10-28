@@ -31,7 +31,7 @@ int main(int argc,char**argv)try{
  const bool use_dplur=integrator=="dplur";
  StaticAmrDplurOptions2D dplur;
  if(use_dplur){dplur.cfl=number("dplur_cfl");dplur.sweeps=static_cast<int>(number("dplur_sweeps"));dplur.omega=number("dplur_omega");dplur.block_coupling=number("dplur_block")!=0;
-  if(backend!="cpu"||mode!="steady"||!(dplur.cfl>0)||dplur.sweeps<1||dplur.sweeps>50||!(dplur.omega>0&&dplur.omega<=1)){std::cerr<<"2D DP-LUR currently requires a steady CPU case and valid controls\n";return 2;}}
+  if(mode!="steady"||!(dplur.cfl>0)||dplur.sweeps<1||dplur.sweeps>50||!(dplur.omega>0&&dplur.omega<=1)){std::cerr<<"2D DP-LUR requires a steady case and valid controls\n";return 2;}}
  const long dplur_max_iterations=use_dplur?static_cast<long>(number("dplur_iterations")):0;
  const long dplur_check=use_dplur?static_cast<long>(number("dplur_check")):0;
  std::filesystem::create_directories(std::filesystem::path(prefix).parent_path());
@@ -82,7 +82,9 @@ int main(int argc,char**argv)try{
  StaticAmrState2D state;if(static_amr2d_initialize(mesh,p,reference,&state))return 1;const auto initial=state.u;
  const double mesh_seconds=elapsed();
  StaticAmrGpu*raw=nullptr;std::unique_ptr<StaticAmrGpu,void(*)(StaticAmrGpu*)>gpu(nullptr,static_amr_gpu_destroy);
- if(backend=="cuda"&&mode!="mesh"){AmrGpuOptions o;o.fused=true;o.event_timing=events;o.sa_fused=sa_layout=="fused";if(static_amr_gpu_create(mesh,p,state,o,&raw,&error)){std::cerr<<error;return 1;}gpu.reset(raw);}
+ if(backend=="cuda"&&mode!="mesh"){AmrGpuOptions o;o.fused=true;o.event_timing=events;o.sa_fused=sa_layout=="fused";
+  o.dplur=use_dplur;o.dplur_sweeps=dplur.sweeps;o.dplur_omega=dplur.omega;o.dplur_block_coupling=dplur.block_coupling;
+  if(static_amr_gpu_create(mesh,p,state,o,&raw,&error)){std::cerr<<error;return 1;}gpu.reset(raw);}
  double io=0;const auto write_mesh=[&](){auto t=std::chrono::steady_clock::now();const int z=static_amr_binary_mesh(mesh,p,prefix,&error);io+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();return z==0;};
  const auto save=[&](std::string tag){auto t=std::chrono::steady_clock::now();const int z=static_amr_binary_snapshot(mesh,p,state,prefix+"."+tag,backend.c_str(),&error);io+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();return z==0;};
  if(!write_mesh()||!save("initial"))return 1;
@@ -94,7 +96,10 @@ int main(int argc,char**argv)try{
  while(mode!="mesh"&&elapsed()<budget-1&&(use_dplur?state.steps<dplur_max_iterations:state.time<stop_time)){
   int status=0;
   if(use_dplur){dplur.iterations=std::min(dplur_check,dplur_max_iterations-state.steps);dplur.budget_seconds=std::max(.001,budget-1-elapsed());StaticAmrDplurReport2D dplur_report;
-    auto t=std::chrono::steady_clock::now();status=static_amr2d_run_dplur(mesh,p,dplur,&state,&dplur_report,&error);cpu_advance+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();dplur.cfl=dplur_report.final_cfl;}
+    auto t=std::chrono::steady_clock::now();
+    if(raw)status=static_amr_gpu_run_dplur(raw,dplur,&state,&dplur_report,&error);
+    else {status=static_amr2d_run_dplur(mesh,p,dplur,&state,&dplur_report,&error);cpu_advance+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();}
+    dplur.cfl=dplur_report.final_cfl;}
   else if(raw){status=static_amr_gpu_advance(raw,target,50000000,&state,&error,std::max(.001,budget-1-elapsed()));if(static_amr_gpu_download(raw,&state,&error))return 1;}
   else{auto t=std::chrono::steady_clock::now();status=static_amr2d_run(mesh,p,target,50000000,&state,&error);cpu_advance+=std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();}
   if(status==1||(!use_dplur&&state.rejected&&!p.local_pseudo_time)){std::cerr<<"flow: "<<error<<" rejected="<<state.rejected<<'\n';failed=true;reason="admissibility-or-advance-failure";break;}

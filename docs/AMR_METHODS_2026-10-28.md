@@ -10,7 +10,7 @@ validation.
 | Component | 2-D Cartesian cut cell | 3-D Cartesian octree AMR |
 |---|---|---|
 | Spatial residual | Shared subface finite-volume flux, exact cut-wall segments, order 1 or limited order 2 | Procedural block interiors, stored cut faces, exact wall fragments, and explicit 2:1 interfaces |
-| Steady marching | GPU/CPU SSP-RK3; new CPU matrix-free block DP-LUR reference | CUDA/CPU DP-LUR, five sweeps and scalar or five-variable Euler neighbor action |
+| Steady marching | GPU/CPU SSP-RK3 and matrix-free block DP-LUR | CUDA/CPU DP-LUR, five sweeps and scalar or five-variable Euler neighbor action |
 | Low-Mach treatment | Optional Turkel residual preconditioning | Not used for the Mach 0.85 CRM case |
 | Viscous/turbulence model | Laminar or SA-neg with Sutherland viscosity | SA-neg with wall-distance table and optional bounded SA face operator |
 | Wall pressure | Cut-segment pressure; optional bounded two-donor normal probe | Cut-fragment pressure; optional pressure-only normal probe |
@@ -20,7 +20,7 @@ The normal-probe wall-pressure option is deliberately disabled by default.
 It is a bounded diagnostic reconstruction, not a wall function, and matched
 CRM tests did not identify it as an accuracy fix.
 
-## New 2-D DP-LUR reference path
+## 2-D CPU/CUDA DP-LUR path
 
 The 2-D path uses local pseudo-time, repeated matrix-free relaxation sweeps,
 a scalar spectral/viscous backbone, and a four-variable Euler
@@ -30,9 +30,10 @@ CFL.  The saved state contains the pseudo-iteration counter, so a 10+10-step
 restart is deterministic and matches a continuous 20-step run exactly in the
 unit test.
 
-The current verified implementation is CPU only.  The existing CUDA 2-D
-production path remains SSP-RK3; a CUDA DP-LUR port has not yet been
-implemented or benchmarked.
+The same operator is implemented on CPU and CUDA. The persistent CUDA session
+performs residual evaluation, local-rate/diagonal construction, block sweeps,
+admissibility checks, CFL rollback, and state commit on the device. CUDA Graph
+batches avoid a host synchronization for every pseudo-iteration.
 
 Run the retained LF1 example from the repository root:
 
@@ -77,6 +78,13 @@ The matched XFOIL values are CL 0.6749, CD 0.00572, and moment magnitude
 0.1066.  Lift and moment are suitable narrow-envelope trend checks.  The
 cut-cell viscous drag is not yet validated, so the CD agreement must not be
 treated as an accuracy claim.
+
+The verified CUDA input is
+`config/naca4412_m02_order2_dplur_cuda.json`. With CFL 0.5, five sweeps, and
+omega 0.8 on RTX 4090, LF1/LF2 passed the same residual + CL/CM/Cp gate in
+5,600/11,000 iterations and 3.22/6.25 s process time, with zero rejected
+updates. CFL 4 passed LF1 in 1.32 s but produced a persistent LF2 residual
+cycle; nearly stationary loads alone were not accepted as steady convergence.
 
 Unit verification covers exact uniform-flow preservation, damping of a
 pressure perturbation, and exact 20-step versus 10+10-step restart equality.

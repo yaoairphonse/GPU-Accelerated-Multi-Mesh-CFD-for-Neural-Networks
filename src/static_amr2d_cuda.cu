@@ -1,5 +1,6 @@
 // Persistent AMR CUDA state. Control, CFL and RK rejection stay on-device.
 #include "static_amr2d_gpu.h"
+#include "static_amr2d_dplur.h"
 #include "static_amr2d_reconstruction.h"
 #include "sa_model.h"
 #include "low_mach.h"
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -28,6 +30,8 @@ struct Config {
   double gamma,cfl,fixed_dt,mco;
   int flux,bc[4],small,agglomerated,spatial_order,wall_pressure_reconstruction;
   double wall_pressure_probe_blend;
+  double dplur_omega=.8;
+  bool dplur_block_coupling=true;
   AmrBoundary2D boundary[4];
   AmrTransport2D transport;
 };
@@ -46,6 +50,8 @@ struct Data {
   AmrViscousFaceGeometry2D* face_geometry=nullptr;
   double *gradient=nullptr,*mu=nullptr,*wall_flux=nullptr,*face_coefficient=nullptr,*wall_coefficient=nullptr;
   double *diffusion_rate=nullptr,*diffusion_group=nullptr;
+  double *sa_rate=nullptr,*dplur_dt=nullptr,*dplur_diagonal=nullptr;
+  double *dplur_update=nullptr,*dplur_next=nullptr;
   double *sa_phi=nullptr,*eddy=nullptr,*wall_distance=nullptr,*sa_grad=nullptr,*sa_diff=nullptr,*sa_source=nullptr,*sa_source_rate=nullptr;
   double *sa_face_flux=nullptr,*sa_face_coefficient=nullptr,*sa_wall_flux=nullptr,*sa_wall_coefficient=nullptr;
   Control* control=nullptr;
@@ -191,7 +197,8 @@ __global__ void collect_kernel(Config cfg,Data d,double* r,bool base) {
   if(base){d.cell_dt[k]=spectral>0?d.control->cfl*(cfg.agglomerated?cell.volume:(cell.x1-cell.x0)*(cell.y1-cell.y0))/spectral:CUDART_INF;
     if(cfg.transport.model==AMR_MODEL_LAMINAR){d.diffusion_rate[k]=diffusion/cell.volume;
       if(cfg.transport.stabilization==AMR_VISCOUS_VOLUME&&diffusion>0)d.cell_dt[k]=fmin(d.cell_dt[k],cfg.transport.viscous_cfl*cell.volume/diffusion);}
-    if constexpr(JoinSA){const double rate=2*sa_spectral/(d.w[k]*cell.volume)+d.sa_source_rate[k];if(rate>0)d.cell_dt[k]=fmin(d.cell_dt[k],cfg.transport.sa_cfl/rate);}}
+    if constexpr(JoinSA){const double rate=2*sa_spectral/(d.w[k]*cell.volume)+d.sa_source_rate[k];d.sa_rate[k]=rate;
+      if(rate>0)d.cell_dt[k]=fmin(d.cell_dt[k],cfg.transport.sa_cfl/rate);}}
 }
 __global__ void diffusion_group_kernel(Config cfg,Data d) {
   const size_t g=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
@@ -206,6 +213,98 @@ __global__ void precondition_kernel(Config cfg,Data d,double* rhs) {
   for(int v=0;v<cfg.nv;++v)rr[v]=rhs[v*cfg.n+k];
   lm_apply(rr,ww,cfg.gamma,cfg.mach_reference,cfg.mach_floor,2,cfg.transport.sa_model);
   for(int v=0;v<cfg.nv;++v)rhs[v*cfg.n+k]=rr[v];
+}
+__device__ double dplur_face_speed(Config cfg,Data d,size_t k,int axis) {
+  const double velocity=d.w[(axis+1)*cfg.n+k];
+  const double sound=sqrt(cfg.gamma*d.w[3*cfg.n+k]/d.w[k]);
+  if(!cfg.precondition)return fabs(velocity)+sound;
+  const double primitive[4]={d.w[k],d.w[cfg.n+k],d.w[2*cfg.n+k],d.w[3*cfg.n+k]};
+  return lm_face_speed(primitive,primitive,axis+1,3,cfg.gamma,
+                       cfg.mach_reference,cfg.mach_floor);
+}
+__device__ void dplur_euler_action(const double* w,const double* du,
+                                   double nx,double ny,double gamma,double* action) {
+  const double rho=w[0],u=w[1],v=w[2],p=w[3],drho=du[0];
+  const double un=u*nx+v*ny,speed2=u*u+v*v;
+  const double energy=p/(gamma-1)+.5*rho*speed2;
+  const double velocity_x=(du[1]-u*drho)/rho;
+  const double velocity_y=(du[2]-v*drho)/rho;
+  const double velocity_normal=velocity_x*nx+velocity_y*ny;
+  const double pressure=(gamma-1)*(du[3]-u*du[1]-v*du[2]+.5*speed2*drho);
+  action[0]=du[1]*nx+du[2]*ny;
+  action[1]=du[1]*un+rho*u*velocity_normal+pressure*nx;
+  action[2]=du[2]*un+rho*v*velocity_normal+pressure*ny;
+  action[3]=(du[3]+pressure)*un+(energy+p)*velocity_normal;
+}
+__global__ void dplur_target_kernel(Control* c,long target_steps,double cfl) {
+  c->maxsteps=target_steps;c->cfl=cfl;c->attempt=0;c->retrying=0;
+  c->finished=c->steps>=target_steps;c->active=0;
+}
+__global__ void dplur_begin_kernel(Control* c) {
+  c->active=0;if(c->fatal||c->finished)return;
+  if(c->steps>=c->maxsteps){c->finished=1;return;}
+  c->bad=0;c->active=1;
+}
+__global__ void dplur_initialize_kernel(Config cfg,Data d) {
+  const size_t k=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+  if(k>=cfg.n||!healthy(d.control))return;
+  const auto cell=d.cells[k];double convective=0;
+  for(size_t pos=d.offset[k];pos<d.offset[k+1];++pos){const auto face=d.faces[d.face_ids[pos]];
+    double speed=dplur_face_speed(cfg,d,k,face.axis);
+    if(face.left>=0&&face.right>=0){const size_t neighbor=face.left==static_cast<int>(k)?face.right:face.left;
+      speed=fmax(speed,dplur_face_speed(cfg,d,neighbor,face.axis));}
+    convective+=speed*face.length/cell.volume;
+  }
+  const double sound=sqrt(cfg.gamma*d.w[3*cfg.n+k]/d.w[k]);
+  for(size_t q=cell.wall_begin;q<cell.wall_begin+cell.wall_count;++q)
+    convective+=sound*d.walls[q].length/cell.volume;
+  const double viscous=cfg.transport.model==AMR_MODEL_LAMINAR?d.diffusion_rate[k]:0;
+  const double mean=convective+2*viscous;
+  const double sa=cfg.transport.sa_model?d.sa_rate[k]:0;
+  const double rate=fmax(mean,sa);
+  if(!(rate>0)||!isfinite(rate)){atomicOr(&d.control->bad,1);return;}
+  const double dt=d.control->cfl/rate;d.dplur_dt[k]=dt;
+  d.dplur_diagonal[k]=1+dt*convective;
+  for(int v=1;v<4;++v)d.dplur_diagonal[v*cfg.n+k]=1+dt*mean;
+  if(cfg.transport.sa_model)d.dplur_diagonal[4*cfg.n+k]=1+dt*fmax(sa,convective);
+  for(int v=0;v<cfg.nv;++v){const size_t q=v*cfg.n+k;
+    d.dplur_update[q]=dt*d.r0[q]/d.dplur_diagonal[q];}
+}
+__global__ void dplur_sweep_kernel(Config cfg,Data d,const double* update,double* next) {
+  const size_t k=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+  if(k>=cfg.n||!healthy(d.control))return;
+  double sum[5]={};const double inverse_volume=1/d.cells[k].volume;
+  for(size_t pos=d.offset[k];pos<d.offset[k+1];++pos){const auto face=d.faces[d.face_ids[pos]];
+    if(face.left<0||face.right<0)continue;
+    const size_t neighbor=face.left==static_cast<int>(k)?face.right:face.left;
+    const double speed=fmax(dplur_face_speed(cfg,d,k,face.axis),
+                            dplur_face_speed(cfg,d,neighbor,face.axis));
+    const double convective=.5*speed*face.length*inverse_volume;
+    if(cfg.dplur_block_coupling){double du[4],w[4],action[4];
+      for(int v=0;v<4;++v){du[v]=update[v*cfg.n+neighbor];w[v]=d.w[v*cfg.n+neighbor];}
+      const double normal=face.left==static_cast<int>(k)?1.:-1.;
+      dplur_euler_action(w,du,face.axis==0?normal:0,face.axis==1?normal:0,
+                         cfg.gamma,action);
+      const double scale=.5*face.length*inverse_volume;
+      for(int v=0;v<4;++v)sum[v]+=convective*du[v]-scale*action[v];
+    }else for(int v=0;v<4;++v)sum[v]+=convective*update[v*cfg.n+neighbor];
+    if(cfg.transport.sa_model)sum[4]+=convective*update[4*cfg.n+neighbor];
+  }
+  const double dt=d.dplur_dt[k];
+  for(int v=0;v<cfg.nv;++v){const size_t q=v*cfg.n+k;
+    const double value=dt*(d.r0[q]+sum[v])/d.dplur_diagonal[q];
+    next[q]=(1-cfg.dplur_omega)*update[q]+cfg.dplur_omega*value;}
+}
+__global__ void dplur_candidate_kernel(Config cfg,Data d,const double* update) {
+  const size_t q=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+  if(q<cfg.nv*cfg.n&&healthy(d.control))d.u1[q]=d.u[q]+update[q];
+}
+__global__ void dplur_commit_control_kernel(Control* c) {
+  if(!live(c))return;
+  if(c->bad){++c->rejected;++c->attempt;c->cfl*=.5;
+    if(c->attempt>=21||c->cfl<1e-6)c->fatal=5;}
+  else {++c->steps;c->time=static_cast<double>(c->steps);c->attempt=0;
+    c->finished=c->steps>=c->maxsteps;}
 }
 __global__ void choose_dt_kernel(Config cfg,Data d) {
   __shared__ double values[threads];double dt=CUDART_INF;
@@ -309,6 +408,47 @@ void launch_trial(StaticAmrGpu* s) {
   }
   commit_state_kernel<<<nu,threads,0,stream>>>(c,d);commit_control_kernel<<<1,1,0,stream>>>(d.control);
 }
+void launch_dplur_trial(StaticAmrGpu* s) {
+  const auto c=s->cfg;const auto d=s->d;const auto stream=s->stream;
+  const int nc=blocks(c.n),nf=blocks(c.nf),nu=blocks(c.nv*c.n);
+  const bool fused=s->options.fused&&c.transport.model==AMR_MODEL_LAMINAR;
+  const bool joined=fused&&s->options.sa_fused&&c.transport.sa_model;
+  dplur_begin_kernel<<<1,1,0,stream>>>(d.control);
+  primitive_kernel<<<nc,threads,0,stream>>>(c,d,d.u,true);
+  if(c.transport.model==AMR_MODEL_LAMINAR){
+    if(joined)velocity_gradient_kernel<true><<<nc,threads,0,stream>>>(c,d);
+    else velocity_gradient_kernel<false><<<nc,threads,0,stream>>>(c,d);
+  }
+  if(c.transport.sa_model&&!joined)sa_gradient_kernel<<<nc,threads,0,stream>>>(c,d);
+  if(c.spatial_order==2)reconstruction_kernel<<<nc,threads,0,stream>>>(c,d);
+  if(fused){
+    if(joined)flux_wall_kernel<true><<<blocks(c.nf+c.nw),threads,0,stream>>>(c,d);
+    else flux_wall_kernel<false><<<blocks(c.nf+c.nw),threads,0,stream>>>(c,d);
+  }else{
+    if(c.transport.model==AMR_MODEL_LAMINAR&&c.nw)
+      viscous_wall_kernel<<<blocks(c.nw),threads,0,stream>>>(c,d);
+    flux_kernel<<<nf,threads,0,stream>>>(c,d);
+  }
+  if(joined)collect_kernel<true><<<nc,threads,0,stream>>>(c,d,d.r0,true);
+  else {
+    collect_kernel<false><<<nc,threads,0,stream>>>(c,d,d.r0,true);
+    if(c.transport.sa_model){
+      sa_face_wall_kernel<<<blocks(c.nf+c.nw),threads,0,stream>>>(c,d);
+      sa_collect_kernel<<<nc,threads,0,stream>>>(c,d,d.r0,true);
+    }
+  }
+  if(c.precondition)precondition_kernel<<<nc,threads,0,stream>>>(c,d,d.r0);
+  dplur_initialize_kernel<<<nc,threads,0,stream>>>(c,d);
+  const double* current=d.dplur_update;double* next=d.dplur_next;
+  for(int sweep=1;sweep<s->options.dplur_sweeps;++sweep){
+    dplur_sweep_kernel<<<nc,threads,0,stream>>>(c,d,current,next);
+    const double* completed=next;next=const_cast<double*>(current);current=completed;
+  }
+  dplur_candidate_kernel<<<nu,threads,0,stream>>>(c,d,current);
+  primitive_kernel<<<nc,threads,0,stream>>>(c,d,d.u1,false);
+  commit_state_kernel<<<nu,threads,0,stream>>>(c,d);
+  dplur_commit_control_kernel<<<1,1,0,stream>>>(d.control);
+}
 void host_metadata(const StaticAmrGpu* s,StaticAmrState2D* state) {
   state->time=s->host_control->time;state->steps=s->host_control->steps;state->rejected=s->host_control->rejected;
 }
@@ -319,7 +459,10 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   if(!result)return 1;*result=nullptr;
   if(!static_amr2d_viscous_ready(m)||!static_amr2d_wall_pressure_ready(m,p)||m.cells.empty()||m.faces.empty()||initial.u.size()!=(m.transport.sa_model?5:4)*m.cells.size()||!std::isfinite(initial.time)||initial.time<0||
      options.batch_trials<1||options.batch_trials>1024||(p.amr_spatial_order!=1&&p.amr_spatial_order!=2)||p.time_integrator!=TIME_SSP_RK3||
-     !std::isfinite(p.gamma)||!(p.gamma>1)||!(p.cfl>0)||p.cfl>.5||!std::isfinite(p.dt_fixed)||p.dt_fixed<0||
+     (options.dplur&&(options.dplur_sweeps<1||options.dplur_sweeps>50||
+       !(options.dplur_omega>0&&options.dplur_omega<=1)))||
+     (options.dplur&&(m.small_cells!=0||!m.options.agglomerate_small))||
+     !std::isfinite(p.gamma)||!(p.gamma>1)||!(p.cfl>0)||(!options.dplur&&p.cfl>.5)||!std::isfinite(p.dt_fixed)||p.dt_fixed<0||
      !std::isfinite(p.ausm_mco)||p.ausm_mco<=0||(p.flux!=FLUX_HLLC&&p.flux!=FLUX_AUSMPUP)) {if(error)*error="invalid AMR GPU configuration";return 1;}
   for(int side=0;side<4;++side)if(!amr_bc_valid(m.boundaries[side],p.bc[side],side)){if(error)*error="invalid AMR GPU boundary configuration";return 1;}
   const auto start=std::chrono::steady_clock::now();std::unique_ptr<StaticAmrGpu> owner(new StaticAmrGpu);auto* s=owner.get();s->options=options;
@@ -330,6 +473,8 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   s->cfg.spatial_order=p.amr_spatial_order;
   s->cfg.wall_pressure_reconstruction=p.wall_pressure_reconstruction;
   s->cfg.wall_pressure_probe_blend=p.wall_pressure_probe_blend;
+  s->cfg.dplur_omega=options.dplur_omega;
+  s->cfg.dplur_block_coupling=options.dplur_block_coupling;
   for(int i=0;i<4;++i){s->cfg.bc[i]=p.bc[i];s->cfg.boundary[i]=m.boundaries[i];}
   if(!checked(cudaStreamCreateWithFlags(&s->stream,cudaStreamNonBlocking),error,"AMR stream"))return 1;
   if(options.event_timing&&(!checked(cudaEventCreate(&s->batch_start),error,"AMR timing start")||
@@ -349,11 +494,15 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   const size_t n=s->cfg.n,nf=s->cfg.nf;
   if(m.transport.sa_model){
     if(!upload(s,&d.wall_distance,m.viscous.wall_distance,error))return 1;
-    for(double** buffer:{&d.sa_phi,&d.eddy,&d.sa_diff,&d.sa_source,&d.sa_source_rate})if(!alloc(s,buffer,n,error))return 1;
+    for(double** buffer:{&d.sa_phi,&d.eddy,&d.sa_diff,&d.sa_source,&d.sa_source_rate,&d.sa_rate})if(!alloc(s,buffer,n,error))return 1;
     if(!alloc(s,&d.sa_grad,2*n,error)||!alloc(s,&d.sa_face_flux,nf,error)||!alloc(s,&d.sa_face_coefficient,nf,error)||!alloc(s,&d.sa_wall_flux,s->cfg.nw,error)||!alloc(s,&d.sa_wall_coefficient,s->cfg.nw,error))return 1;
   }
   for(double** buffer:{&d.u,&d.u1,&d.u2,&d.w,&d.r0,&d.r,&d.qhat})if(!alloc(s,buffer,s->cfg.nv*n,error))return 1;
   if(!alloc(s,&d.flux,4*nf,error)||!alloc(s,&d.speed,nf,error)||!alloc(s,&d.cell_dt,n,error)||!alloc(s,&d.control,1,error))return 1;
+  if(options.dplur){
+    if(!alloc(s,&d.dplur_dt,n,error)||!alloc(s,&d.dplur_diagonal,s->cfg.nv*n,error)||
+       !alloc(s,&d.dplur_update,s->cfg.nv*n,error)||!alloc(s,&d.dplur_next,s->cfg.nv*n,error))return 1;
+  }
   if(!checked(cudaHostAlloc(reinterpret_cast<void**>(&s->host_control),sizeof(Control),cudaHostAllocDefault),error,"AMR pinned control")||
      !checked(cudaHostAlloc(reinterpret_cast<void**>(&s->host_state),s->cfg.nv*n*sizeof(double),cudaHostAllocDefault),error,"AMR pinned state"))return 1;
   s->stats.pinned_bytes=sizeof(Control)+s->cfg.nv*n*sizeof(double);
@@ -367,7 +516,7 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
   s->stats.control_h2d_bytes=sizeof(Control);
   if(options.graph) {
     if(!checked(cudaStreamBeginCapture(s->stream,cudaStreamCaptureModeThreadLocal),error,"AMR graph begin"))return 1;
-    launch_trial(s);
+    if(options.dplur)launch_dplur_trial(s);else launch_trial(s);
     if(!checked(cudaStreamEndCapture(s->stream,&s->graph),error,"AMR graph end")||
        !checked(cudaGraphInstantiate(&s->executable,s->graph,nullptr,nullptr,0),error,"AMR graph instantiate"))return 1;
     size_t nodes=0;if(!checked(cudaGraphGetNodes(s->graph,nullptr,&nodes),error,"AMR graph node count"))return 1;
@@ -378,11 +527,11 @@ int static_amr_gpu_create(const StaticAmrMesh2D& m,const Params2D& p,const Stati
 }
 
 int static_amr_gpu_set_cfl(StaticAmrGpu* s,double value,std::string* error) {
-  if(!s||!std::isfinite(value)||!(value>0)||value>.5){if(error)*error="CFL must be in (0,.5] for explicit RK3";return 1;}
+  if(!s||s->options.dplur||!std::isfinite(value)||!(value>0)||value>.5){if(error)*error="CFL must be in (0,.5] for an explicit RK3 session";return 1;}
   cfl_kernel<<<1,1,0,s->stream>>>(s->d.control,value);return checked(cudaGetLastError(),error,"CFL update")?0:1;
 }
 int static_amr_gpu_advance(StaticAmrGpu* s,double tend,long maxsteps,StaticAmrState2D* state,std::string* error,double wall_budget_seconds) {
-  if(!s||!state||!std::isfinite(tend)||tend<s->host_control->time||maxsteps<1||!std::isfinite(wall_budget_seconds)||wall_budget_seconds<0){if(error)*error="invalid AMR GPU advance";return 1;}
+  if(!s||s->options.dplur||!state||!std::isfinite(tend)||tend<s->host_control->time||maxsteps<1||!std::isfinite(wall_budget_seconds)||wall_budget_seconds<0){if(error)*error="invalid explicit AMR GPU advance";return 1;}
   const auto start=std::chrono::steady_clock::now();auto last=start;bool expired=false;
   target_kernel<<<1,1,0,s->stream>>>(s->d.control,tend,maxsteps);
   for(;;) {
@@ -407,6 +556,52 @@ int static_amr_gpu_advance(StaticAmrGpu* s,double tend,long maxsteps,StaticAmrSt
   if(s->host_control->fatal){if(error)*error="AMR GPU stopped with status "+std::to_string(s->host_control->fatal)+"; last accepted state retained";return 1;}
   if(expired)return 2;
   return 0;
+}
+
+int static_amr_gpu_run_dplur(StaticAmrGpu* s,const StaticAmrDplurOptions2D& requested,
+                             StaticAmrState2D* state,StaticAmrDplurReport2D* report,
+                             std::string* error) {
+  if(report)*report={};
+  if(!s||!s->options.dplur||!state||requested.iterations<0||
+     requested.sweeps!=s->options.dplur_sweeps||
+     requested.omega!=s->options.dplur_omega||
+     requested.block_coupling!=s->options.dplur_block_coupling||
+     !std::isfinite(requested.cfl)||!(requested.cfl>0)||
+     !std::isfinite(requested.budget_seconds)||requested.budget_seconds<0||
+     requested.iterations>LONG_MAX-s->host_control->steps) {
+    if(error)*error="invalid CUDA DP-LUR request or session settings do not match";
+    return 1;
+  }
+  const auto start=std::chrono::steady_clock::now();auto last=start;bool expired=false;
+  const long start_steps=s->host_control->steps,start_rejected=s->host_control->rejected;
+  const long target_steps=start_steps+requested.iterations;
+  dplur_target_kernel<<<1,1,0,s->stream>>>(s->d.control,target_steps,requested.cfl);
+  for(;;){
+    if(s->options.event_timing&&!checked(cudaEventRecord(s->batch_start,s->stream),error,"DP-LUR timing record start"))return 1;
+    for(int trial=0;trial<s->options.batch_trials;++trial){
+      if(s->options.graph){if(!checked(cudaGraphLaunch(s->executable,s->stream),error,"DP-LUR graph launch"))return 1;}
+      else launch_dplur_trial(s);
+    }
+    if(s->options.event_timing&&!checked(cudaEventRecord(s->batch_end,s->stream),error,"DP-LUR timing record end"))return 1;
+    if(!checked(cudaGetLastError(),error,"DP-LUR kernels")||
+       !checked(cudaMemcpyAsync(s->host_control,s->d.control,sizeof(Control),cudaMemcpyDeviceToHost,s->stream),error,"DP-LUR control D2H")||
+       !checked(cudaStreamSynchronize(s->stream),error,"DP-LUR batch sync"))return 1;
+    if(s->options.event_timing){float ms=0;if(!checked(cudaEventElapsedTime(&ms,s->batch_start,s->batch_end),error,"DP-LUR timing elapsed"))return 1;
+      s->stats.advance_event_seconds+=ms*.001;++s->stats.event_batches;}
+    s->stats.control_d2h_bytes+=sizeof(Control);++s->stats.status_polls;host_metadata(s,state);
+    const auto now=std::chrono::steady_clock::now();
+    if(std::chrono::duration<double>(now-last).count()>=2){std::fprintf(stderr,"amr-cuda-dplur: iterations=%ld rejected=%ld cfl=%.6g polls=%llu\n",state->steps,state->rejected,s->host_control->cfl,static_cast<unsigned long long>(s->stats.status_polls));last=now;}
+    if(s->host_control->fatal||s->host_control->finished)break;
+    if(requested.budget_seconds>0&&std::chrono::duration<double>(now-start).count()>=requested.budget_seconds){expired=true;break;}
+  }
+  const double kernel_seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+  s->stats.advance_seconds+=kernel_seconds;
+  if(s->host_control->fatal){if(error)*error="CUDA DP-LUR stopped with status "+std::to_string(s->host_control->fatal)+"; last accepted state retained";return 1;}
+  if(static_amr_gpu_download(s,state,error))return 1;
+  if(report){report->accepted=state->steps-start_steps;report->rejected=state->rejected-start_rejected;
+    report->seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+    report->final_cfl=s->host_control->cfl;}
+  return expired?2:0;
 }
 
 int static_amr_gpu_download(StaticAmrGpu* s,StaticAmrState2D* state,std::string* error) {

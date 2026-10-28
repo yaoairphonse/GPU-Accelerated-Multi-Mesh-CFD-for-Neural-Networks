@@ -14,7 +14,8 @@ For the short readiness map, see the [L0/L1/L2 progress summary](PROGRESS_L0_L1_
 | RAE 2822 hybrid LF1 | 5,051 wedge/hex cells | $C_L/C_D/C_M = 0.803917 / 0.096155 / -0.098244$ | Solver verification passed |
 | NACA 4412 LF1 | 4,718 cut cells | $C_L = 0.66444$, $C_p$ RMS 0.01282 vs. XFOIL | Validated |
 | NACA 4412 LF2 | 9,517 cut cells | $C_L = 0.66297$, $C_p$ RMS 0.01176 vs. XFOIL | Validated |
-| NACA 4412 CPU DP-LUR LF1/LF2 | 4,718 / 9,517 cut cells | 7.70 / 48.25 s process time | Both trend gates passed; drag not validated |
+| NACA 4412 CUDA DP-LUR LF1/LF2 | 4,718 / 9,517 cut cells | 3.22 / 6.25 s process time | Both residual + CL/CM/Cp gates passed; drag not validated |
+| NACA 4412 CPU DP-LUR LF1/LF2 | 4,718 / 9,517 cut cells | 7.70 / 48.25 s process time | Portable reference; both trend gates passed |
 
 For the 21.52M-cell NASA CRM run at Mach 0.85, $\alpha = 2.5^\circ$, $\text{Re}_{\text{MAC}} = 5\times 10^6$, the NASA USM3D reference is $C_D/C_L/C_M = 0.02995/0.54239/-0.06249$. The 11,900-step endpoint differs by +0.057%/+5.475%/+33.05%. A full observed low-to-low trajectory cycle over iterations 6,550–10,200 averages $0.028936/0.565420/-0.052798$, or -3.385%/+4.246%/+15.509%. This is a steady pseudo-iteration diagnostic, not a physical-time URANS average; global/near-body maximum residuals remain $3.76\times10^{-5}/1.31\times10^{-3}$.
 
@@ -24,7 +25,7 @@ For the 21.52M-cell NASA CRM run at Mach 0.85, $\alpha = 2.5^\circ$, $\text{Re}_
 2. Reducing per-cell GPU memory footprint prior to 30–40M cell AMR grids.
 3. Completing full second-order viscous and SA turbulence verification.
 4. Long-window pressure and viscous drag stabilization across multiple mesh refinement levels.
-5. CUDA DP-LUR for the simple 2D NNLCI input path.
+5. Broader Mach/geometry validation of the new CUDA DP-LUR 2D NNLCI path.
 
 ## Recent Solver Evaluations
 
@@ -35,4 +36,4 @@ Three optional solver extensions were implemented and verified for conservation 
 
 Detailed evaluation logs are stored under `docs/development_history/`.
 
-Residual and load budgets are now available by procedural block, same-level/2:1 interface, stored cut, wall, far-field, and SA-source families. The 2D CPU DP-LUR reference adds matching deterministic-restart and face/load audit coverage. CUDA RK3 remains the 2D production path while CUDA DP-LUR is pending.
+Residual and load budgets are now available by procedural block, same-level/2:1 interface, stored cut, wall, far-field, and SA-source families. The 2D CPU/CUDA DP-LUR path adds matching deterministic-restart and face/load audit coverage. CUDA DP-LUR passes the retained NACA4412 LF1/LF2 gate at CFL 0.5; broad validation remains pending.

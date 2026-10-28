@@ -202,7 +202,7 @@ function generate(){
     nativeConfig=native2dConfig();entryPoint="quick_cfd.py -> quick_airfoil";
     mesh={type:"native_cartesian_quadtree_amr_cut_cell",geometry_path:$("geometryPath").value.trim(),geometry_format:$("geometryFormat").value,preset:$("meshPreset").value,nominal_controls:$("meshPreset").value==="LF1"?4700:9500,maximum_cells_cap:number("maxCells2d"),count_is_target:false};
     physics={model:$("turbulence2d").value==="sa-neg"?"RANS_SA_neg":"laminar_viscous",turbulence:$("turbulence2d").value,viscosity:$("viscosity2d").value,freestream:{...common,pressure_Pa:number("pressure"),temperature_K:number("temperature"),chord_m:number("chord")}};
-    numerics={integrator,implicit,backend,spatial_order:number("spatialOrder"),convective_flux:$("flux2d").value,low_mach_preconditioning:$("preconditioning2d").value,CFL:number("cfl"),local_pseudo_time:implicit?true:bool("localPseudo2d"),adaptive_CFL:implicit?false:bool("adaptiveCfl2d"),dplur:implicit?nativeConfig.solver.dplur:null};
+    numerics={integrator,implicit,backend,spatial_order:number("spatialOrder"),convective_flux:$("flux2d").value,low_mach_preconditioning:$("preconditioning2d").value,CFL:number("cfl"),local_pseudo_time:implicit?false:bool("localPseudo2d"),adaptive_CFL:implicit?false:bool("adaptiveCfl2d"),dplur:implicit?nativeConfig.solver.dplur:null};
     termination=implicit?{maximum_iterations:number("iterations"),check_interval:number("checkPeriod"),wall_clock_budget_seconds:number("budget"),convergence_gate:"raw residual plus stable CL/CM/Cp"}:{maximum_iterations:null,stop_time_star:number("stopTime2d"),check_period_star:number("checkPeriodStar2d"),wall_clock_budget_seconds:number("budget"),convergence_gate:"raw residual plus stable CL/CM/Cp",note:"The current 2-D RK3 driver does not expose a direct maximum-iteration limit."};
     const configName=name+".case.json";
     argv=["python3","quick_cfd.py","run","--points",mesh.geometry_path,"--point-format",mesh.geometry_format,"--config",configName,"--out",$("outputDir").value.trim(),"--levels",mesh.preset,"--backend",backend,"--executable",build.directory+"/quick_airfoil"];
@@ -217,7 +217,7 @@ function generate(){
     ];
     warnings.push("Actual 2-D control count is geometry-dependent; the selected count is a fidelity preset, not an exact target.");
     if(!implicit)warnings.push("2-D RK3 terminates through convergence, nondimensional stop time, or wall-clock budget; it has no direct maximum-iteration input.");
-    if(implicit&&mesh.preset==="LF2"&&number("cfl")>1)warnings.push("The retained LF2 DP-LUR preset uses CFL 1; higher values previously produced residual oscillation and require a new stability check.");
+    if(implicit&&mesh.preset==="LF2"&&number("cfl")>.5)warnings.push("The verified LF2 CUDA DP-LUR preset uses CFL 0.5; CFL 4 produced a non-decaying residual cycle and must not be reported as steady.");
     warnings.push("Rapid cut-cell drag is exported but is not yet an aerodynamic validation claim.");
   }else if(path==="amr3d"){
     entryPoint="amr3d";mesh={type:"native_procedural_octree_AMR_cut_cell",packed_mesh_directory:$("amrMeshPath").value.trim(),expected_controls:number("amrExpectedCells"),provenance:$("amrProvenance").value.trim(),count_is_target:false};
@@ -291,16 +291,17 @@ function updateVisibility(){
       $("cfl").value=path==="amr3d"?"0.05":"0.15";
       if(path==="unstructured3d")$("cflMax3d").value="0.4";
     }else{
-      $("cfl").value=path==="airfoil2d"?"4":"1";
+      $("cfl").value=path==="airfoil2d"?"0.5":"1";
       if(path==="unstructured3d")$("cflMax3d").value="4";
+      if(path==="airfoil2d"){$("iterations").value="200000";$("checkPeriod").value="200";$("budget").value="120";}
+      else{$("iterations").value="5000";$("checkPeriod").value="100";$("budget").value="60";}
     }
     lastRoute=route;
   }
   show(".mode",false);show(".mode-"+path,true);show(".mode-3d",!is2d);show(".dplur-only",implicit);show(".rk3-only",!implicit&&is2d);show(".iteration-limit",!(is2d&&!implicit));
   show(".node-only",path==="unstructured3d"&&$("gradient").value==="node");
   $("implicitStatus").value=implicit?"Implicit pseudo-time (DP-LUR)":"Explicit (three-stage RK3)";
-  if(is2d&&implicit){$("backend").value="cpu";$("backend").disabled=true;$("initialization").value="uniform";$("initialization").disabled=true}
-  else{$("backend").disabled=false;$("initialization").disabled=is2d;if(is2d)$("initialization").value="uniform"}
+  $("backend").disabled=false;$("initialization").disabled=is2d;if(is2d)$("initialization").value="uniform";
   show("#restartWrap",!is2d&&$("initialization").value==="restart");
   show("#cudaArchWrap",$("backend").value==="cuda");
   $("downloadConfig").disabled=!is2d;

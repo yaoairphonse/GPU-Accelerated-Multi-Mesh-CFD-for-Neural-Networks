@@ -33,7 +33,8 @@ GPU timings below were measured on one NVIDIA RTX 4090; the explicitly marked 2D
 | 3D sphere regression | 1.65 | 7,680 polyhedral cells | 2.15 s total process time | Conservation and CPU/CUDA parity check ($10^{-15}$) |
 | RAE 2822 hybrid LF1 | 0.78 | 5,051 wedge/hex cells | 49,000 DP-LUR sweeps in 11.24 s | Solver and CPU/CUDA parity verified |
 | NACA 4412 LF1 / LF2, CUDA RK3 | 0.20 | 4,718 / 9,517 cells | 20.38 / 33.42 s total process time | $C_L$, $C_M$, and surface $C_p$ match XFOIL reference |
-| NACA 4412 LF1 / LF2, CPU DP-LUR reference | 0.20 | 4,718 / 9,517 cells | 7.70 / 48.25 s total process time | Both trend gates passed; 2D CUDA DP-LUR is not yet implemented |
+| NACA 4412 LF1 / LF2, CUDA block DP-LUR | 0.20 | 4,718 / 9,517 cells | 3.22 / 6.25 s total process time | 5,600 / 11,000 iterations; both residual + CL/CM/Cp gates passed |
+| NACA 4412 LF1 / LF2, CPU DP-LUR reference | 0.20 | 4,718 / 9,517 cells | 7.70 / 48.25 s total process time | Portable CPU reference; both trend gates passed |
 
 On the 21.52M-cell CRM AMR grid, the latest five-sweep block-DP-LUR segment averaged about 0.458 s per outer update. The full observed low-to-low load cycle averages $C_D/C_L/C_M = 0.028936/0.565420/-0.052798$. This is a steady pseudo-iteration diagnostic rather than a physical-time URANS average. Building the full octree cut-cell mesh from the closed aircraft surface takes 8 min 52 s from scratch, or 5 min 20 s when refining from a cached parent grid.
 
@@ -57,7 +58,7 @@ All solvers use a density-based finite-volume formulation (explicit RK3 or impli
 | 3D CRM tetra | Body-fitted unstructured tetrahedra | Explicit-face DP-LUR | 10.07M-cell import, checkpoint restart, gradient & SA tests |
 | 3D sphere | 6-block cubed-sphere polyhedra | Explicit-face CPU/CUDA | Conservation, positivity, CPU/CUDA parity |
 | 3D RAE 2822 | Mixed wedge/hex thin wing section | Explicit-face DP-LUR | LF1 run and CPU/CUDA parity |
-| 2D airfoil | Cartesian cut cell (LF1/LF2) | CUDA/CPU RK3; CPU matrix-free block DP-LUR; SA-neg and low-Mach preconditioning | RK3 validated against XFOIL ($C_L, C_M, C_p$); DP-LUR regressions and LF1/LF2 trend gates passed |
+| 2D airfoil | Cartesian cut cell (LF1/LF2) | CUDA/CPU RK3 and matrix-free block DP-LUR; SA-neg and low-Mach preconditioning | RK3 validated against XFOIL ($C_L, C_M, C_p$); CPU/CUDA DP-LUR regressions and LF1/LF2 trend gates passed |
 
 ## Build and Quick Start
 
@@ -77,6 +78,14 @@ For a visual offline setup that covers the published 2-D and 3-D solver
 routes, open the [CFD case builder](tools/cfd_case_builder.html). It downloads
 a native 2-D configuration when applicable, an agent-readable manifest, and a
 reviewable build/run script; it does not execute CFD in the browser.
+
+For the verified 2-D CUDA block-DP-LUR setup, use
+`config/naca4412_m02_order2_dplur_cuda.json` with `quick_cfd.py`. On the
+reference RTX 4090, LF1/LF2 converged in 3.22/6.25 s with CFL 0.5, five
+sweeps, and zero rejected updates. CFL 4 was faster on LF1 but generated a
+non-decaying LF2 residual cycle, so high-CFL stationary-looking loads are not
+reported as a steady solution. The compact machine-readable evidence is
+[`docs/data/naca4412_cuda_dplur_2026-10-28.json`](docs/data/naca4412_cuda_dplur_2026-10-28.json).
 
 CUDA build (defaults to `sm_89` for RTX 4090):
 

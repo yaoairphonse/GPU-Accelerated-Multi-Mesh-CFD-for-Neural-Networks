@@ -13,11 +13,12 @@ inputs and commands but does not execute CFD in the browser.
 | 3-D native procedural octree-AMR cut cell | `amr3d` | packed `QCFDAM1` directory | explicit CLI plus manifest |
 | 3-D external tetra/hybrid/polyhedral | `sphere3d` | prepared `QCFD3D1`/explicit-face file | explicit CLI plus manifest |
 
-The page deliberately does not offer unsupported combinations.  In
-particular, the current native 2-D path does not read an external volume mesh,
-2-D DP-LUR is CPU only, the 2-D driver does not expose an inviscid Euler
-switch, and the 3-D production paths use the six-variable SA-neg mechanical-
-viscous model.
+The page deliberately does not offer unsupported combinations. In particular,
+the current native 2-D path does not read an external volume mesh, the 2-D
+driver does not expose an inviscid Euler switch, and the 3-D production paths
+use the six-variable SA-neg mechanical-viscous model. The native 2-D DP-LUR
+integrator is available on CPU and CUDA; CUDA uses persistent device state and
+CUDA Graph batches.
 
 ## Inputs represented
 
@@ -40,6 +41,11 @@ An important interface distinction is preserved: 2-D RK3 stops through the
 configured convergence gate, nondimensional stop time, or wall-clock budget;
 it does not currently accept a direct maximum-iteration setting.  The 2-D
 DP-LUR and both 3-D executables expose an iteration limit.
+
+For the retained Mach 0.2 NACA 4412 DP-LUR setup, CFL 0.5 is the verified
+portable LF1/LF2 selection. CFL 4 passed LF1 but produced a non-decaying LF2
+residual cycle even though its loads changed only slightly; the page therefore
+warns against treating that high-CFL endpoint as steady.
 
 ## Downloads
 
